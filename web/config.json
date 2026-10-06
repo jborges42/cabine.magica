@@ -6,8 +6,11 @@
   "cor_destaque": "#E84910",
   "logo": "logo-senai-branco.png",
   "moldura_png": "",
-  "espelhar": true,
+  "espelhar_previa": true,
+  "espelhar_foto": false,
   "contagem": 3,
-  "resolucao": [1920, 1080],
+  "resolucao": "max",
+  "fps": 30,
+  "preset": "natural",
   "qualidade_jpeg": 0.92
 }
