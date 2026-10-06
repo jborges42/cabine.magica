@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (06/10/2026)
+
+- Formatos Story, Feed, Quadrado e Grande, escolhidos antes da foto com prévia do recorte.
+- Foto espelhada como a prévia.
+- QR Code para o visitante baixar a foto em qualidade total (túnel Cloudflare, links assinados).
+- Modo celular gratuito: o WhatsApp da cabine é vinculado por QR e envia imagem e arquivo.
+- Balanço de branco que não azula silhuetas em fundos coloridos.
+
 ## 0.2.0 (06/10/2026)
 
 - Presets de tratamento (Natural, Luz de estúdio, Pele suave, Vívido, P&B, Original) com OpenCV e YuNet.

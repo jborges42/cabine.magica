@@ -88,6 +88,15 @@
     [data-estado]:not([data-estado="ao-vivo"]) .controles { visibility: hidden; }
     .dica { display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: 15px; }
     .dica:last-child { justify-content: flex-end; }
+    .formatos { display: flex; flex-wrap: wrap; gap: 8px; }
+    .formatos button {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 8px; border-radius: 999px;
+      border: 1px solid var(--linha); background: var(--vidro); font-weight: 700; font-size: 15px; color: var(--suave);
+    }
+    .formatos button small { font-weight: 400; opacity: .75; }
+    .formatos button kbd { padding: 4px 7px; min-width: 0; }
+    .formatos button[aria-pressed="true"] { background: var(--cor-primaria); border-color: color-mix(in oklab, var(--cor-primaria) 60%, #fff); color: #fff; }
+    .formatos button:disabled { display: none; }
     .dica strong { color: var(--texto); }
     kbd {
       display: inline-block; min-width: 2.3em; padding: 6px 9px; text-align: center;
@@ -166,6 +175,11 @@
     .primario kbd { color: inherit; border-color: rgb(255 255 255 / .35); background: rgb(0 0 0 / .12); }
     .secundario { background: transparent; border: 1px solid var(--linha); font-size: 18px; }
     .legal { margin-top: 4px; color: var(--suave); font-size: 13px; }
+    .baixar { display: flex; align-items: center; gap: 16px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--linha); }
+    .baixar[hidden] { display: none; }
+    #qr svg { display: block; width: 116px; height: 116px; border-radius: 10px; }
+    .baixar p { color: var(--suave); font-size: 15px; }
+    .baixar strong { display: block; color: var(--texto); font-size: 17px; }
 
     .final { display: grid; justify-items: center; gap: 18px; max-width: 760px; text-align: center; }
     .final p { color: var(--suave); font-size: clamp(18px, 1.6vw, 24px); }
@@ -210,9 +224,9 @@
   </main>
 
   <footer class="controles">
-    <p class="dica"><kbd>Enter</kbd> <strong>Tirar foto</strong></p>
+    <div class="formatos" id="formatos" role="group" aria-label="Formato da foto"></div>
     <button class="disparo" id="disparo" aria-label="Tirar foto"></button>
-    <p class="dica"><kbd>C</kbd> Trocar câmera <kbd>F</kbd> Tela cheia</p>
+    <p class="dica"><kbd>Enter</kbd> <strong>Tirar foto</strong> <kbd>C</kbd> Câmera <kbd>F</kbd> Tela cheia</p>
   </footer>
 
   <div class="flash" id="flash"></div>
@@ -237,6 +251,10 @@
         <p class="erro" id="erro" role="alert"></p>
         <button class="botao primario" id="enviar" type="submit"><span>Pular e concluir</span><kbd>Enter</kbd></button>
         <button class="botao secundario" id="refazer" type="button"><span>Tirar outra foto</span><kbd>Esc</kbd></button>
+        <div class="baixar" id="baixar" hidden>
+          <div id="qr" aria-hidden="true"></div>
+          <p><strong>Ou baixe no seu celular</strong>Aponte a câmera para o QR Code: foto em alta qualidade para postar no Story ou no Feed.</p>
+        </div>
         <p class="legal" id="legal">Ao enviar, você autoriza o SENAI a mandar esta foto para o seu WhatsApp. Seu número não será usado para mais nada.</p>
       </form>
     </div>

@@ -26,29 +26,40 @@ def rostos(img):
 
 
 def balanco_branco(img, forca=0.5, limite=14):
-    """Mundo cinza em LAB, parcial e limitado: tira dominantes de luz sem "lavar" cenários coloridos."""
+    """Mundo cinza em LAB, parcial e limitado. Só votam pixels quase neutros (paredes, roupas
+    claras): um fundo laranja ou um banner azul não "puxam" a correção."""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
-    meio = (lab[..., 0] > 30) & (lab[..., 0] < 230)  # ignora sombras profundas e luzes estouradas
-    if meio.any():
+    amostra = lab[::4, ::4]
+    croma = np.hypot(amostra[..., 1] - 128, amostra[..., 2] - 128)
+    votam = (amostra[..., 0] > 30) & (amostra[..., 0] < 230) & (croma < 30)
+    if votam.mean() > 0.02:  # pouca coisa neutra na cena: melhor não mexer
+        peso = lab[..., 0] / 255  # proporcional à luz: tons escuros (roupas) quase não mudam de cor
         for canal in (1, 2):
-            desvio = np.clip(lab[..., canal][meio].mean() - 128, -limite, limite)
-            lab[..., canal] -= desvio * forca
+            desvio = np.clip(amostra[..., canal][votam].mean() - 128, -limite, limite)
+            lab[..., canal] -= desvio * forca * peso
     return cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
-def exposicao(img, alvo=0.42, limites=(0.7, 1.5)):
+def curva_luz(img, curva):
+    """Aplica a curva só na luminosidade (L do LAB): a cor (matiz e saturação) não muda."""
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    lab[..., 0] = cv2.LUT(lab[..., 0], np.clip(curva * 255, 0, 255).astype(np.uint8))
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+def exposicao(img, alvo=0.42, limites=(0.8, 1.3)):
     """Gama pela luminância média-logarítmica da CENA (não do rosto: não "clareia" tons de pele)."""
-    luz = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)[::4, ::4].astype(np.float32) / 255
+    luz = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[::4, ::4, 0].astype(np.float32) / 255
     chave = float(np.exp(np.log(luz + 0.01).mean()))
     gama = float(np.clip(np.log(alvo) / np.log(max(chave, 0.02)), *limites))
-    return cv2.LUT(img, np.clip(X**gama * 255, 0, 255).astype(np.uint8))
+    return curva_luz(img, X**gama)
 
 
 def niveis(img, corte=(0.4, 99.8), limites=(28, 215)):
     """Ponto de preto e de branco automáticos (o "Auto" dos Níveis), sem esticar demais."""
-    preto, branco = np.percentile(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)[::4, ::4], corte)
+    preto, branco = np.percentile(cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[::4, ::4, 0], corte)
     preto, branco = min(preto, limites[0]), max(branco, limites[1])
-    return cv2.LUT(img, np.clip((np.arange(256) - preto) * 255 / (branco - preto), 0, 255).astype(np.uint8))
+    return curva_luz(img, np.clip((X * 255 - preto) / (branco - preto), 0, 1))
 
 
 def tons(img, sombras=0.0, realces=0.0, contraste=0.0, local=0.0):
@@ -183,7 +194,7 @@ def processar(jpeg, preset="natural", molduras=None, qualidade=92):
         raise ValueError("imagem inválida")
     if preset not in PRESETS:
         raise ValueError(f"preset desconhecido: {preset}")
-    img = PRESETS[preset][1](img, rostos(img))
+    img = PRESETS[preset][1](img, rostos(img) if preset in ("estudio", "pele") else [])  # só quem usa rosto
     if molduras:
         img = aplicar_moldura(img, Path(molduras) / f"{img.shape[1]}x{img.shape[0]}.png")
     return cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, int(qualidade)])[1].tobytes()

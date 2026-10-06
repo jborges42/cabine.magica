@@ -81,6 +81,30 @@ assert pedir(f"/api/envios/{foto_id}")[1]["status"] == "pendente"
 
 assert "hashtag" in pedir("/config.json")[1]
 
+# ---------- Download pelo celular: servidor público separado, links assinados ----------
+import compartilhar  # noqa: E402
+
+compartilhar.SEGREDO = tmp / "segredo.key"
+assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None  # sem túnel: sem QR
+compartilhar.Publico.fotos = cabine.FOTOS
+publico = ThreadingHTTPServer(("127.0.0.1", 0), compartilhar.Publico)
+threading.Thread(target=publico.serve_forever, daemon=True).start()
+compartilhar.estado["url"] = f"http://127.0.0.1:{publico.server_port}"
+info = pedir(f"/api/fotos/{foto_id}/link")[1]
+assert info["url"].endswith(f"/f/{foto_id}/{compartilhar.assinatura(foto_id)}") and info["qr"].startswith("<svg")
+with urllib.request.urlopen(info["url"]) as r:
+    assert b"foto.jpg" in r.read()
+with urllib.request.urlopen(info["url"] + "/foto.jpg?baixar=1") as r:
+    assert r.headers["Content-Disposition"].startswith("attachment") and r.read() == (cabine.FOTOS / f"{foto_id}.jpg").read_bytes()
+for ruim in (f"/f/{foto_id}/AAAAAAAAAAAAAAAA", f"/f/{foto_id}", "/api/presets", "/config.json", f"/f/../{foto_id}/x"):
+    try:
+        urllib.request.urlopen(compartilhar.estado["url"] + ruim)
+        raise AssertionError(f"servidor público respondeu {ruim}")
+    except urllib.error.HTTPError as e:
+        assert e.code == 404, ruim
+publico.shutdown()
+compartilhar.estado["url"] = None
+
 # ---------- WhatsApp: worker contra uma API falsa no formato da Cloud API ----------
 import whatsapp  # noqa: E402
 from http.server import BaseHTTPRequestHandler  # noqa: E402
@@ -145,6 +169,41 @@ assert pedir("/api/whatsapp")[1]["fila"]["erro"] == 1
 assert pedir("/api/whatsapp/reenviar", b"{}")[1]["fila"]["erro"] == 0
 assert whatsapp.estado["pausa"] is None
 api.shutdown()
+
+# ---------- Modo celular (grátis): worker com o envio do celular simulado ----------
+import celular  # noqa: E402
+
+enviados = []
+
+
+def envio_falso(destino, caminho, nome):
+    jpeg = caminho.read_bytes()
+    if destino.endswith("0002"):
+        raise celular.ErroCelular("este número não tem WhatsApp", repetir=False)
+    if destino.endswith("0003"):
+        raise celular.ErroCelular("falha ao enviar: rede", repetir=True)
+    enviados.append((destino, len(jpeg), nome))
+    return "MSGID"
+
+
+celular.enviar, celular.iniciar = envio_falso, lambda: None
+whatsapp.salvar({"provedor": "celular"})
+cfg = whatsapp.carregar()
+assert not whatsapp.configurado(cfg), "celular desconectado não pode contar como configurado"
+assert pedir("/api/whatsapp")[1]["celular"]["status"] == "desligado"
+celular.estado.update(status="conectado", numero="5549988887777")
+assert whatsapp.configurado(cfg)
+for final in "123":
+    caminho = cabine.FILA / f"celular-{final}.json"
+    caminho.write_text(json.dumps({**pedido, "destino": f"554999999000{final}"}), encoding="utf-8")
+    whatsapp.processar(caminho, cabine.FOTOS, cfg)
+    resultado = json.loads(caminho.read_text(encoding="utf-8"))
+    esperado = {"1": "enviado", "2": "erro", "3": "pendente"}[final]
+    assert resultado["status"] == esperado, (final, resultado)
+assert enviados == [("5549999990001", len((cabine.FOTOS / pedido["foto"]).read_bytes()), f"cabine-magica-{pedido['foto']}")]
+assert json.loads((cabine.FILA / "celular-3.json").read_text(encoding="utf-8"))["tentativas"] == 1
+assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[1]["wamid"] == "MSGID"
+assert pedir("/api/whatsapp/celular/desconectar", b"{}")[1]["celular"]["status"] == "desligado"
 
 servidor.shutdown()
 print("ok")

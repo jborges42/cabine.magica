@@ -1,5 +1,7 @@
-"""Envio oficial pelo WhatsApp: Cloud API da Meta ou parceiro oficial (BSP) com o mesmo formato.
+"""Envio da foto pelo WhatsApp a partir da fila (fila/*.json), em um destes modos:
 
+- "celular" (padrão, grátis): o celular da cabine lê um QR Code e vira o emissor (celular.py,
+  biblioteca NÃO oficial: use chip dedicado). Manda imagem + arquivo em qualidade total.
 - "meta": número registrado direto na Cloud API (token permanente de System User).
 - "360dialog": número do app WhatsApp Business conectado por QR Code (coexistência) no
   painel do parceiro; a cabine só usa a chave de API gerada lá.
@@ -9,6 +11,7 @@ cabeçalho e grava o resultado no próprio pedido. Configuração em whatsapp.js
 nunca vai para o navegador). Teste rápido:  python whatsapp.py 49999991234
 """
 import json
+import logging
 import secrets
 import threading
 import time
@@ -20,14 +23,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import celular
+
 RAIZ = Path(__file__).resolve().parent
 CONFIG = RAIZ / "whatsapp.json"
-PADRAO = {"provedor": "meta", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": ""}
+PADRAO = {"provedor": "celular", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": ""}
 LIMITE_IMAGEM = 5_000_000  # Cloud API: imagem JPEG/PNG de até 5 MB
 
 # Códigos oficiais (developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
-REPETIR = {1, 2, 4, 80007, 130429, 131000, 131056, 131057}  # instabilidade/limite: tenta de novo com espera 4^n
-PAUSAR = {0, 3, 10, 190, 200, 368, 131005, 131031, 131042, 132001, 132015, 132016, 133010}  # problema na conta/config
+REPETIR = {1, 2, 4, 429, 80007, 130429, 131000, 131056, 131057}  # instabilidade/limite: tenta de novo com espera 4^n
+PAUSAR = {0, 3, 10, 190, 200, 368, 401, 403, 131005, 131031, 131042, 132001, 132015, 132016, 133010}  # problema na conta/config
 TRAVA = threading.Lock()
 estado = {"pausa": None, "pausa_desde": 0.0}
 
@@ -54,12 +59,15 @@ def carregar():
 def salvar(novos):
     """Grava só as chaves conhecidas; token em branco mantém o atual."""
     cfg = carregar()
+    anterior = cfg["provedor"]
     for chave in PADRAO:
         valor = str(novos.get(chave, "")).strip()
         if valor or chave not in ("token", "api_base"):
             cfg[chave] = valor or PADRAO[chave]
-    if cfg["provedor"] not in ("meta", "360dialog"):
-        raise ValueError("provedor deve ser 'meta' ou '360dialog'")
+    if cfg["provedor"] != anterior and not str(novos.get("token", "")).strip():
+        cfg["token"] = ""  # o token de um provedor não serve para outro
+    if cfg["provedor"] not in ("celular", "meta", "360dialog"):
+        raise ValueError("provedor deve ser 'celular', 'meta' ou '360dialog'")
     temporario = CONFIG.with_suffix(".tmp")
     temporario.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     temporario.replace(CONFIG)
@@ -67,6 +75,8 @@ def salvar(novos):
 
 
 def configurado(cfg):
+    if cfg["provedor"] == "celular":
+        return celular.estado["status"] == "conectado"
     return bool(cfg["token"] and cfg["template"] and (cfg["provedor"] != "meta" or cfg["phone_number_id"]))
 
 
@@ -159,7 +169,18 @@ def _ler(caminho):
 def _gravar(caminho, pedido):
     temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
     temporario.write_text(json.dumps(pedido, ensure_ascii=False, indent=2), encoding="utf-8")
+    for tentativa in range(40):  # Windows: falha se a tela está lendo o pedido naquele instante
+        try:
+            return temporario.replace(caminho)
+        except PermissionError:
+            time.sleep(0.05)
     temporario.replace(caminho)
+
+
+def _mais_tarde(pedido):
+    pedido["tentativas"] = pedido.get("tentativas", 0) + 1
+    espera = min(4 ** pedido["tentativas"], 900)  # 4, 16, 64… até 15 min (recomendação da Meta)
+    pedido["proxima_tentativa"] = (datetime.now() + timedelta(seconds=espera)).isoformat(timespec="seconds")
 
 
 def processar(caminho, fotos, cfg):
@@ -169,23 +190,33 @@ def processar(caminho, fotos, cfg):
     if pedido.get("status") != "pendente" or pedido.get("proxima_tentativa", "") > datetime.now().isoformat():
         return True
     try:
-        if not pedido.get("media_id") or pedido.get("media_em", "") < (datetime.now() - timedelta(days=29)).isoformat():
-            pedido["media_id"] = subir_foto(cfg, jpeg_para_envio((fotos / pedido["foto"]).read_bytes()))  # vale 30 dias
-            pedido["media_em"] = datetime.now().isoformat(timespec="seconds")
-        pedido["wamid"], pedido["wa_id"] = enviar_template(cfg, pedido["destino"], pedido["media_id"])
+        if cfg["provedor"] == "celular":
+            pedido["wamid"] = celular.enviar(pedido["destino"], fotos / pedido["foto"], f"cabine-magica-{pedido['foto']}")
+        else:
+            if not pedido.get("media_id") or pedido.get("media_em", "") < (datetime.now() - timedelta(days=29)).isoformat():
+                pedido["media_id"] = subir_foto(cfg, jpeg_para_envio((fotos / pedido["foto"]).read_bytes()))  # vale 30 dias
+                pedido["media_em"] = datetime.now().isoformat(timespec="seconds")
+            pedido["wamid"], pedido["wa_id"] = enviar_template(cfg, pedido["destino"], pedido["media_id"])
         pedido.update(status="enviado", enviado_em=datetime.now().isoformat(timespec="seconds"), erro=None)
+    except celular.ErroCelular as erro:
+        pedido["erro"] = str(erro)
+        if erro.repetir:
+            _mais_tarde(pedido)
+        else:
+            pedido["status"] = "erro"
     except ErroWhatsApp as erro:
         pedido["erro"] = str(erro)
         if erro.tipo == "pausar":
             estado.update(pausa=str(erro), pausa_desde=time.time())
         elif erro.tipo == "repetir":
-            pedido["tentativas"] = pedido.get("tentativas", 0) + 1
-            espera = min(4 ** pedido["tentativas"], 900)  # 4, 16, 64… até 15 min (recomendação da Meta)
-            pedido["proxima_tentativa"] = (datetime.now() + timedelta(seconds=espera)).isoformat(timespec="seconds")
+            _mais_tarde(pedido)
         else:
             pedido["status"] = "erro"  # sem WhatsApp, número inválido…: o operador decide reenviar
     except OSError as erro:
         pedido.update(status="erro", erro=f"foto não encontrada ({erro})")
+    except Exception as erro:  # resposta inesperada: vira erro (o operador reenvia), nunca derruba a thread
+        logging.getLogger("cabine").exception("envio %s falhou", caminho.name)
+        pedido.update(status="erro", erro=f"falha inesperada ({erro!r})")
     with TRAVA:
         _gravar(caminho, pedido)
     return estado["pausa"] is None
@@ -199,8 +230,11 @@ def trabalhar(fila, fotos):
             estado["pausa"] = None
         if configurado(cfg) and not estado["pausa"]:
             for caminho in sorted(fila.glob("*.json")):
-                if not processar(caminho, fotos, cfg):
-                    break
+                try:
+                    if not processar(caminho, fotos, cfg):
+                        break
+                except Exception:  # pedido ilegível etc.: registra e segue com os outros
+                    logging.getLogger("cabine").exception("pedido %s ilegível", caminho.name)
         time.sleep(2)
 
 
@@ -224,22 +258,29 @@ def reenviar_erros(fila):
             pedido = _ler(caminho)
             if pedido.get("status") == "erro":
                 pedido.update(status="pendente", tentativas=0, proxima_tentativa="", erro=None)
+                pedido.pop("media_id", None)  # pode ser de outra conta: sobe a foto de novo
                 _gravar(caminho, pedido)
     estado["pausa"] = None
 
 
 def testar(destino, fotos):
-    """Envia agora (sem fila) a foto mais recente, ou uma imagem de teste: valida conta, token e template."""
+    """Envia agora (sem fila) uma imagem de teste: valida conexão, conta, token e template.
+    Nunca usa foto de visitante: o teste pode ir para qualquer número."""
     cfg = carregar()
     if not configurado(cfg):
-        raise ErroWhatsApp("config", "preencha o token, o template e (na Meta) o phone_number_id")
-    recentes = sorted(fotos.glob("*.jpg"))
-    if recentes:
-        jpeg = recentes[-1].read_bytes()
-    else:
-        img = np.full((1080, 1920, 3), (147, 65, 22), np.uint8)  # azul SENAI (BGR)
-        cv2.putText(img, "Teste da Cabine Magica", (420, 560), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
-        jpeg = cv2.imencode(".jpg", img)[1].tobytes()
+        falta = "conecte o celular da cabine (QR Code no painel)" if cfg["provedor"] == "celular" else "preencha o token, o template e (na Meta) o phone_number_id"
+        raise ErroWhatsApp("config", falta)
+    img = np.full((1080, 1920, 3), (147, 65, 22), np.uint8)  # azul SENAI (BGR)
+    cv2.putText(img, "Teste da Cabine Magica", (420, 560), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
+    jpeg = cv2.imencode(".jpg", img)[1].tobytes()
+    if cfg["provedor"] == "celular":
+        teste = fotos / ".teste-whatsapp.jpg"
+        teste.parent.mkdir(parents=True, exist_ok=True)
+        teste.write_bytes(jpeg)
+        try:
+            return {"wamid": celular.enviar(destino, teste, "teste-cabine-magica.jpg"), "wa_id": None}
+        except celular.ErroCelular as erro:
+            raise ErroWhatsApp("celular", str(erro)) from None
     wamid, wa_id = enviar_template(cfg, destino, subir_foto(cfg, jpeg_para_envio(jpeg)))
     return {"wamid": wamid, "wa_id": wa_id}
 

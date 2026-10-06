@@ -7,10 +7,11 @@
   "logo": "logo-senai-branco.png",
   "moldura_png": "",
   "espelhar_previa": true,
-  "espelhar_foto": false,
+  "espelhar_foto": true,
   "contagem": 3,
   "resolucao": "max",
   "fps": 30,
   "preset": "natural",
+  "formato": "feed",
   "qualidade_jpeg": 0.92
 }
