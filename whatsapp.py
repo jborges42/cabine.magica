@@ -11,6 +11,7 @@ cabeçalho e grava o resultado no próprio pedido. Configuração em whatsapp.js
 nunca vai para o navegador). Teste rápido:  python whatsapp.py 49999991234
 """
 import json
+import logging
 import secrets
 import threading
 import time
@@ -30,8 +31,8 @@ PADRAO = {"provedor": "celular", "token": "", "phone_number_id": "", "versao_api
 LIMITE_IMAGEM = 5_000_000  # Cloud API: imagem JPEG/PNG de até 5 MB
 
 # Códigos oficiais (developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
-REPETIR = {1, 2, 4, 80007, 130429, 131000, 131056, 131057}  # instabilidade/limite: tenta de novo com espera 4^n
-PAUSAR = {0, 3, 10, 190, 200, 368, 131005, 131031, 131042, 132001, 132015, 132016, 133010}  # problema na conta/config
+REPETIR = {1, 2, 4, 429, 80007, 130429, 131000, 131056, 131057}  # instabilidade/limite: tenta de novo com espera 4^n
+PAUSAR = {0, 3, 10, 190, 200, 368, 401, 403, 131005, 131031, 131042, 132001, 132015, 132016, 133010}  # problema na conta/config
 TRAVA = threading.Lock()
 estado = {"pausa": None, "pausa_desde": 0.0}
 
@@ -58,10 +59,13 @@ def carregar():
 def salvar(novos):
     """Grava só as chaves conhecidas; token em branco mantém o atual."""
     cfg = carregar()
+    anterior = cfg["provedor"]
     for chave in PADRAO:
         valor = str(novos.get(chave, "")).strip()
         if valor or chave not in ("token", "api_base"):
             cfg[chave] = valor or PADRAO[chave]
+    if cfg["provedor"] != anterior and not str(novos.get("token", "")).strip():
+        cfg["token"] = ""  # o token de um provedor não serve para outro
     if cfg["provedor"] not in ("celular", "meta", "360dialog"):
         raise ValueError("provedor deve ser 'celular', 'meta' ou '360dialog'")
     temporario = CONFIG.with_suffix(".tmp")
@@ -205,6 +209,9 @@ def processar(caminho, fotos, cfg):
             pedido["status"] = "erro"  # sem WhatsApp, número inválido…: o operador decide reenviar
     except OSError as erro:
         pedido.update(status="erro", erro=f"foto não encontrada ({erro})")
+    except Exception as erro:  # resposta inesperada: vira erro (o operador reenvia), nunca derruba a thread
+        logging.getLogger("cabine").exception("envio %s falhou", caminho.name)
+        pedido.update(status="erro", erro=f"falha inesperada ({erro!r})")
     with TRAVA:
         _gravar(caminho, pedido)
     return estado["pausa"] is None
@@ -218,8 +225,11 @@ def trabalhar(fila, fotos):
             estado["pausa"] = None
         if configurado(cfg) and not estado["pausa"]:
             for caminho in sorted(fila.glob("*.json")):
-                if not processar(caminho, fotos, cfg):
-                    break
+                try:
+                    if not processar(caminho, fotos, cfg):
+                        break
+                except Exception:  # pedido ilegível etc.: registra e segue com os outros
+                    logging.getLogger("cabine").exception("pedido %s ilegível", caminho.name)
         time.sleep(2)
 
 
@@ -243,23 +253,21 @@ def reenviar_erros(fila):
             pedido = _ler(caminho)
             if pedido.get("status") == "erro":
                 pedido.update(status="pendente", tentativas=0, proxima_tentativa="", erro=None)
+                pedido.pop("media_id", None)  # pode ser de outra conta: sobe a foto de novo
                 _gravar(caminho, pedido)
     estado["pausa"] = None
 
 
 def testar(destino, fotos):
-    """Envia agora (sem fila) a foto mais recente, ou uma imagem de teste: valida conta, token e template."""
+    """Envia agora (sem fila) uma imagem de teste: valida conexão, conta, token e template.
+    Nunca usa foto de visitante: o teste pode ir para qualquer número."""
     cfg = carregar()
     if not configurado(cfg):
         falta = "conecte o celular da cabine (QR Code no painel)" if cfg["provedor"] == "celular" else "preencha o token, o template e (na Meta) o phone_number_id"
         raise ErroWhatsApp("config", falta)
-    recentes = sorted(fotos.glob("*.jpg"))
-    if recentes:
-        jpeg = recentes[-1].read_bytes()
-    else:
-        img = np.full((1080, 1920, 3), (147, 65, 22), np.uint8)  # azul SENAI (BGR)
-        cv2.putText(img, "Teste da Cabine Magica", (420, 560), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
-        jpeg = cv2.imencode(".jpg", img)[1].tobytes()
+    img = np.full((1080, 1920, 3), (147, 65, 22), np.uint8)  # azul SENAI (BGR)
+    cv2.putText(img, "Teste da Cabine Magica", (420, 560), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
+    jpeg = cv2.imencode(".jpg", img)[1].tobytes()
     if cfg["provedor"] == "celular":
         try:
             return {"wamid": celular.enviar(destino, jpeg, "teste-cabine-magica.jpg"), "wa_id": None}

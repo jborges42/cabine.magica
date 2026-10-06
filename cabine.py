@@ -253,6 +253,8 @@ class Cabine(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     logging.basicConfig(filename=RAIZ / "cabine.log", level=logging.INFO, format="%(asctime)s %(message)s")
+    # No Windows, sem isso uma segunda janela do cabine.py subiria na mesma porta e enviaria tudo em dobro.
+    ThreadingHTTPServer.allow_reuse_address = sys.platform != "win32"
     # Só 127.0.0.1: a cabine não fica exposta na rede do evento.
     servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), partial(Cabine, directory=WEB))
     whatsapp.iniciar(FILA, FOTOS)
