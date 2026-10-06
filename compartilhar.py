@@ -4,6 +4,7 @@ Um servidor SEPARADO (porta 8766) responde só /f/<id>/<assinatura>: a página c
 arquivo em qualidade total. Um túnel gratuito (Cloudflare Quick Tunnel, sem conta) dá a ele
 um endereço HTTPS público; o resto da cabine continua acessível só no próprio PC.
 """
+import atexit
 import base64
 import hashlib
 import hmac
@@ -11,6 +12,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -102,10 +104,14 @@ def _tunel():
         processo = subprocess.Popen(
             [executavel, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{PORTA}"],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,  # sem janela preta
         )
+        atexit.register(processo.terminate)  # não deixa o túnel órfão ao fechar a cabine
         for linha in processo.stderr:  # continua lendo: o pipe cheio travaria o cloudflared
-            if not estado["url"] and (achado := re.search(r"https://[-a-z0-9]+\.trycloudflare\.com", linha)):
-                estado.update(url=achado[0], erro=None)
+            if not estado["url"] and (achado := re.search(r"https://(?!api\.)[-a-z0-9]+\.trycloudflare\.com", linha)):
+                # O DNS do endereço novo leva alguns segundos; consultado cedo, o celular guarda
+                # "não existe" em cache por até 60 s. Então só mostra o QR depois.
+                threading.Timer(10, estado.update, kwargs={"url": achado[0], "erro": None}).start()
         estado.update(url=None, erro=f"túnel caiu (código {processo.wait()}); reconectando")
         threading.Event().wait(10)
 

@@ -170,5 +170,40 @@ assert pedir("/api/whatsapp/reenviar", b"{}")[1]["fila"]["erro"] == 0
 assert whatsapp.estado["pausa"] is None
 api.shutdown()
 
+# ---------- Modo celular (grátis): worker com o envio do celular simulado ----------
+import celular  # noqa: E402
+
+enviados = []
+
+
+def envio_falso(destino, caminho, nome):
+    jpeg = caminho.read_bytes()
+    if destino.endswith("0002"):
+        raise celular.ErroCelular("este número não tem WhatsApp", repetir=False)
+    if destino.endswith("0003"):
+        raise celular.ErroCelular("falha ao enviar: rede", repetir=True)
+    enviados.append((destino, len(jpeg), nome))
+    return "MSGID"
+
+
+celular.enviar, celular.iniciar = envio_falso, lambda: None
+whatsapp.salvar({"provedor": "celular"})
+cfg = whatsapp.carregar()
+assert not whatsapp.configurado(cfg), "celular desconectado não pode contar como configurado"
+assert pedir("/api/whatsapp")[1]["celular"]["status"] == "desligado"
+celular.estado.update(status="conectado", numero="5549988887777")
+assert whatsapp.configurado(cfg)
+for final in "123":
+    caminho = cabine.FILA / f"celular-{final}.json"
+    caminho.write_text(json.dumps({**pedido, "destino": f"554999999000{final}"}), encoding="utf-8")
+    whatsapp.processar(caminho, cabine.FOTOS, cfg)
+    resultado = json.loads(caminho.read_text(encoding="utf-8"))
+    esperado = {"1": "enviado", "2": "erro", "3": "pendente"}[final]
+    assert resultado["status"] == esperado, (final, resultado)
+assert enviados == [("5549999990001", len((cabine.FOTOS / pedido["foto"]).read_bytes()), f"cabine-magica-{pedido['foto']}")]
+assert json.loads((cabine.FILA / "celular-3.json").read_text(encoding="utf-8"))["tentativas"] == 1
+assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[1]["wamid"] == "MSGID"
+assert pedir("/api/whatsapp/celular/desconectar", b"{}")[1]["celular"]["status"] == "desligado"
+
 servidor.shutdown()
 print("ok")

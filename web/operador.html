@@ -17,10 +17,7 @@
       min-height: 100vh; padding: 28px 32px 48px 58px; color: var(--texto); font: 400 16px/1.5 "Marca", "Century Gothic", system-ui, sans-serif;
       background: radial-gradient(80vmax 60vmax at -10% -20%, color-mix(in oklab, var(--azul) 70%, transparent), transparent 60%), var(--fundo);
     }
-    body::before { /* barra lateral da identidade */
-      content: ""; position: fixed; inset: 0 auto 0 0; width: 26px;
-      background: linear-gradient(var(--laranja) 0 54px, transparent 54px 82px, var(--azul) 82px);
-    }
+    body::before { content: ""; position: fixed; inset: 0 auto 0 0; width: 26px; background: linear-gradient(var(--laranja) 0 54px, transparent 54px 82px, var(--azul) 82px); }
     header { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
     header img { height: 32px; }
     header h1 { padding-left: 18px; border-left: 1px solid var(--linha); font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--suave); }
@@ -31,10 +28,10 @@
     h3 { font-size: 15px; color: var(--laranja); text-transform: uppercase; letter-spacing: .1em; }
     p, li { color: var(--suave); }
     strong { color: var(--texto); }
-    ol { padding-left: 20px; display: grid; gap: 6px; }
+    ol, ul { padding-left: 20px; display: grid; gap: 6px; }
     label { display: grid; gap: 6px; font-size: 14px; color: var(--suave); }
-    input, select { font: inherit; color: var(--texto); padding: 11px 14px; border-radius: 12px; border: 1px solid var(--linha); background: rgb(0 0 0 / .3); }
-    input:focus, select:focus { outline: 2px solid var(--laranja); border-color: transparent; }
+    input { font: inherit; color: var(--texto); padding: 11px 14px; border-radius: 12px; border: 1px solid var(--linha); background: rgb(0 0 0 / .3); }
+    input:focus { outline: 2px solid var(--laranja); border-color: transparent; }
     button { font: 700 16px/1.2 "Marca", "Century Gothic", system-ui, sans-serif; color: #fff; cursor: pointer; padding: 13px 18px; border-radius: 12px; border: 0; background: var(--laranja); }
     button.secundario { background: transparent; border: 1px solid var(--linha); }
     button:disabled { opacity: .6; cursor: progress; }
@@ -53,7 +50,10 @@
     pre { white-space: pre-wrap; padding: 14px; border-radius: 12px; background: rgb(0 0 0 / .35); color: var(--texto); font-size: 14px; }
     .erros { display: grid; gap: 8px; font-size: 14px; }
     .erros div { padding: 10px 12px; border-radius: 10px; background: rgb(0 0 0 / .25); }
-    #retorno-teste, #retorno-config { min-height: 1.5em; }
+    .qr { display: grid; justify-items: center; gap: 10px; padding: 16px; border-radius: 16px; background: rgb(0 0 0 / .25); }
+    .qr svg { width: min(300px, 100%); height: auto; border-radius: 12px; }
+    .alerta { padding: 14px 16px; border-radius: 14px; border: 1px solid color-mix(in oklab, var(--aviso) 45%, transparent); background: color-mix(in oklab, var(--aviso) 8%, transparent); }
+    .alerta li, .alerta p { color: var(--texto); font-size: 14px; }
   </style>
 </head>
 <body>
@@ -75,53 +75,72 @@
       </div>
       <div class="erros" id="erros"></div>
       <div class="linha">
-        <button class="secundario" id="verificar">Verificar conexão</button>
+        <button class="secundario" id="verificar">Atualizar</button>
         <button class="secundario" id="reenviar">Reenviar as com erro</button>
       </div>
     </section>
 
     <section aria-labelledby="t-conectar">
-      <h2 id="t-conectar">Conectar o número</h2>
-      <div class="abas" role="group" aria-label="Como conectar">
-        <button type="button" data-provedor="360dialog">Meu celular<br><small>QR Code (coexistência)</small></button>
-        <button type="button" data-provedor="meta">Número dedicado<br><small>Cloud API da Meta</small></button>
+      <h2 id="t-conectar">Conectar o emissor</h2>
+      <div class="abas" role="group" aria-label="Como enviar">
+        <button type="button" data-provedor="celular">Celular da cabine<br><small>QR Code · grátis</small></button>
+        <button type="button" data-provedor="360dialog">Parceiro oficial<br><small>360dialog · pago</small></button>
+        <button type="button" data-provedor="meta">Cloud API<br><small>Meta · pago</small></button>
       </div>
 
-      <div data-passos="360dialog">
-        <h3>Ler o QR Code com o seu celular</h3>
+      <div data-passos="celular">
+        <div class="qr" id="qr-celular" hidden></div>
         <ol>
-          <li>O número emissor precisa estar no app <strong>WhatsApp Business</strong> (versão 2.24.17 ou mais nova), em uso há pelo menos 7 dias. O WhatsApp comum não serve, mas dá para migrar o número para o Business no próprio celular.</li>
-          <li>Acesse o painel do parceiro oficial da Meta <strong>360dialog</strong> (hub.360dialog.com) → <em>Add channel</em> → entre com o Facebook do SENAI.</li>
-          <li>Digite o número e <strong>escaneie o QR Code com o app WhatsApp Business</strong>. O número continua funcionando no seu celular, e você vê lá cada foto enviada.</li>
-          <li>Gere a <strong>API key</strong> no painel e cole abaixo.</li>
-          <li>Abra o app no celular pelo menos a cada 13 dias, senão a conexão cai.</li>
+          <li>Num celular com o <strong>chip do evento</strong> e o WhatsApp (ou WhatsApp Business) instalado, abra <strong>Configurações → Aparelhos conectados → Conectar aparelho</strong>.</li>
+          <li>Clique em <strong>Conectar celular</strong> abaixo e escaneie o QR Code que aparecer aqui.</li>
+          <li>Pronto: os números digitados na cabine recebem a foto como <strong>imagem</strong> e como <strong>arquivo em qualidade total</strong>.</li>
+        </ol>
+        <div class="linha">
+          <button type="button" id="conectar-celular">Conectar celular</button>
+          <button type="button" class="secundario" id="desconectar-celular">Desconectar</button>
+        </div>
+        <div class="alerta">
+          <p><strong>Para não perder o número:</strong> este modo usa o WhatsApp como um "WhatsApp Web" automático, o que não é oficial.</p>
+          <ul>
+            <li>Use um <strong>chip só para o evento</strong>, nunca o número pessoal nem o oficial do SENAI.</li>
+            <li>Ative o chip uns dias antes: foto de perfil, nome "SENAI Fraiburgo · Cabine Mágica" e algumas conversas normais.</li>
+            <li>Mantenha o celular carregado e com internet durante o evento.</li>
+            <li>A cabine já se protege: confere se o número tem WhatsApp, espera de 8 a 20 s entre envios, mostra "digitando…" e varia o texto.</li>
+          </ul>
+        </div>
+      </div>
+      <div data-passos="360dialog" hidden>
+        <h3>Parceiro oficial (coexistência por QR)</h3>
+        <ol>
+          <li>O número precisa estar no app <strong>WhatsApp Business</strong> (versão 2.24.17+), em uso há 7 dias ou mais.</li>
+          <li>No painel da 360dialog (hub.360dialog.com) → <em>Add channel</em>: entre com o Facebook do SENAI e escaneie o QR com o app Business.</li>
+          <li>Gere a API key e cole abaixo. Cada foto custa cerca de R$ 0,035 (template aprovado pela Meta).</li>
         </ol>
       </div>
       <div data-passos="meta" hidden>
         <h3>Número dedicado na Cloud API</h3>
         <ol>
           <li>Em developers.facebook.com, crie um app do tipo <em>WhatsApp</em> no portfólio do SENAI.</li>
-          <li>Registre um número que <strong>não</strong> esteja em uso no WhatsApp (chip novo ou fixo). Ele é verificado por SMS ou ligação.</li>
-          <li>Em <em>Configurações do negócio → Usuários do sistema</em>, gere um token permanente com <code>whatsapp_business_messaging</code> e <code>whatsapp_business_management</code>.</li>
-          <li>Cadastre uma forma de pagamento e copie o <strong>Phone number ID</strong> (WhatsApp → API Setup).</li>
+          <li>Registre um número que não esteja em uso no WhatsApp; ele é verificado por SMS ou ligação.</li>
+          <li>Gere um token permanente de System User e copie o <strong>Phone number ID</strong>. Cada foto custa cerca de R$ 0,035.</li>
         </ol>
       </div>
 
-      <form id="form-config" class="linha">
+      <form id="form-config" class="linha" data-so="meta 360dialog">
         <input type="hidden" name="provedor" id="provedor">
-        <label>Token ou API key<input name="token" type="password" autocomplete="off" placeholder="cole aqui (em branco mantém o atual)"></label>
+        <label data-so="meta 360dialog">Token ou API key<input name="token" type="password" autocomplete="off" placeholder="cole aqui (em branco mantém o atual)"></label>
         <label data-so="meta">Phone number ID<input name="phone_number_id" inputmode="numeric" autocomplete="off"></label>
-        <label>Template aprovado<input name="template" required></label>
-        <label>Idioma<input name="idioma" required></label>
-        <label data-so="meta">Versão da API<input name="versao_api" required></label>
-        <button>Salvar e verificar</button>
+        <label data-so="meta 360dialog">Template aprovado<input name="template"></label>
+        <label data-so="meta 360dialog">Idioma<input name="idioma"></label>
+        <label data-so="meta">Versão da API<input name="versao_api"></label>
+        <button>Usar este modo</button>
       </form>
       <p id="retorno-config" role="status"></p>
     </section>
 
     <section aria-labelledby="t-teste">
       <h2 id="t-teste">Enviar um teste</h2>
-      <p>Manda agora a foto mais recente da cabine (ou uma imagem de teste) usando o template configurado. Use para validar o número, o token e o template antes do evento.</p>
+      <p>Manda agora uma imagem de teste pelo modo escolhido (nunca a foto de um visitante). Faça com o seu número antes do evento.</p>
       <form id="form-teste" class="linha">
         <label>WhatsApp de destino<input name="numero" inputmode="numeric" placeholder="(49) 99999-9999" required></label>
         <button>Enviar teste</button>
@@ -129,42 +148,46 @@
       <p id="retorno-teste" role="status"></p>
     </section>
 
-    <section aria-labelledby="t-template">
+    <section aria-labelledby="t-template" data-so="meta 360dialog">
       <h2 id="t-template">Template a aprovar</h2>
-      <p>Pessoas que nunca falaram com o SENAI só podem receber <strong>template aprovado</strong>. Crie no WhatsApp Manager (aprovação em até 24 h, então faça dias antes do evento):</p>
+      <p>Nos modos oficiais, quem nunca falou com o SENAI só recebe <strong>template aprovado</strong>. Crie no WhatsApp Manager dias antes do evento:</p>
       <pre>Nome: foto_cabine_magica
 Categoria: Utilidade (Utility)
 Idioma: Português (BR)
 Cabeçalho: Imagem (use uma foto da cabine como exemplo)
 Corpo: Olá! Aqui está a foto que você tirou na Cabine Mágica do SENAI Fraiburgo, no Mundo SENAI 2026. Obrigado pela visita!
 Rodapé: SENAI Fraiburgo</pre>
-      <p>Não escreva nada promocional (cursos, matrículas, links), porque a Meta muda a categoria para <strong>Marketing</strong>, que custa cerca de 9 vezes mais. <strong>Verifique o CNPJ</strong> do portfólio antes do evento: sem verificação, o limite é de 250 pessoas por dia.</p>
     </section>
   </main>
 
   <script>
     const $ = (s) => document.querySelector(s);
     const formConfig = $("#form-config");
+    let ultimo = {};
 
     function escolher(provedor) {
       $("#provedor").value = provedor;
       document.querySelectorAll("[data-provedor]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.provedor === provedor));
       document.querySelectorAll("[data-passos]").forEach((d) => (d.hidden = d.dataset.passos !== provedor));
-      document.querySelectorAll("[data-so]").forEach((d) => (d.hidden = d.dataset.so !== provedor));
+      document.querySelectorAll("[data-so]").forEach((d) => (d.hidden = !d.dataset.so.split(" ").includes(provedor)));
     }
     document.querySelectorAll("[data-provedor]").forEach((b) => (b.onclick = () => escolher(b.dataset.provedor)));
 
     function mostrar(s, preencher) {
-      const [texto, classe] = !s.configurado ? ["Não configurado", "aviso"]
-        : s.pausa ? ["Envios pausados", "perigo"]
-        : s.erro_conta ? ["Erro na conexão", "perigo"]
-        : ["Pronto para enviar", "ok"];
+      ultimo = s;
+      const cel = s.celular;
+      const [texto, classe] = s.pausa ? ["Envios pausados", "perigo"]
+        : s.configurado ? ["Pronto para enviar", "ok"]
+        : cel?.status === "aguardando_qr" ? ["Escaneie o QR Code", "aviso"]
+        : cel?.status === "erro" || s.erro_conta ? ["Erro na conexão", "perigo"]
+        : ["Não conectado", "aviso"];
       $("#selo").textContent = texto;
       $("#selo").className = `selo ${classe}`;
-      $("#conta").textContent = s.pausa ? `Pausado: ${s.pausa}. Corrija e salve a configuração (ou espere 10 min).`
-        : s.erro_conta ? s.erro_conta
-        : s.conta ? `Conectado: ${s.conta.display_phone_number} · ${s.conta.verified_name} · qualidade ${s.conta.quality_rating}`
-        : s.configurado ? (s.provedor === "360dialog" ? "Chave salva. Use “Enviar um teste” para validar." : $("#conta").textContent) : "";
+      $("#conta").textContent = s.pausa ? `Pausado: ${s.pausa}. Corrija e salve (ou espere 10 min).`
+        : cel ? (cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em “Conectar celular”."))
+        : s.erro_conta || (s.conta ? `Conectado: ${s.conta.display_phone_number} · ${s.conta.verified_name}` : s.configurado ? "Chave salva. Envie um teste para validar." : "");
+      $("#qr-celular").hidden = !cel?.qr;
+      if (cel?.qr) $("#qr-celular").innerHTML = `${cel.qr}<p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`;
       for (const chave of ["pendente", "enviado", "erro"]) $(`#n-${chave}`).textContent = s.fila[chave] ?? 0;
       $("#erros").replaceChildren(...s.erros.map((e) => Object.assign(document.createElement("div"), { textContent: `${e.destino} · ${e.status}: ${e.erro}` })));
       if (preencher) {
@@ -181,41 +204,50 @@ Rodapé: SENAI Fraiburgo</pre>
       return corpo;
     }
 
-    formConfig.onsubmit = async (e) => {
-      e.preventDefault();
-      const botao = formConfig.querySelector("button");
+    async function acao(botao, executar, retorno) {
       botao.disabled = true;
       try {
+        await executar();
+      } catch (erro) {
+        if (retorno) retorno.textContent = `Erro: ${erro.message}`;
+      } finally {
+        botao.disabled = false;
+      }
+    }
+
+    formConfig.onsubmit = (e) => {
+      e.preventDefault();
+      acao(formConfig.querySelector("button"), async () => {
         mostrar(await api("api/whatsapp/config", Object.fromEntries(new FormData(formConfig))), true);
         formConfig.elements.token.value = "";
-        $("#retorno-config").textContent = "Configuração salva.";
-      } catch (erro) {
-        $("#retorno-config").textContent = `Erro: ${erro.message}`;
-      } finally {
-        botao.disabled = false;
-      }
+        $("#retorno-config").textContent = "Modo salvo.";
+      }, $("#retorno-config"));
     };
 
-    $("#form-teste").onsubmit = async (e) => {
+    $("#conectar-celular").onclick = (e) => acao(e.target, async () => {
+      if (ultimo.provedor !== "celular") await api("api/whatsapp/config", { provedor: "celular" });
+      mostrar(await api("api/whatsapp/celular/conectar", {}), true);
+    }, $("#retorno-config"));
+    $("#desconectar-celular").onclick = (e) => acao(e.target, async () => mostrar(await api("api/whatsapp/celular/desconectar", {})));
+
+    $("#form-teste").onsubmit = (e) => {
       e.preventDefault();
-      const botao = e.target.querySelector("button");
-      botao.disabled = true;
-      $("#retorno-teste").textContent = "Enviando…";
-      try {
+      $("#retorno-teste").textContent = "Enviando… (no modo celular leva uns segundos de propósito)";
+      acao(e.target.querySelector("button"), async () => {
         const r = await api("api/whatsapp/teste", { numero: e.target.elements.numero.value });
-        $("#retorno-teste").textContent = `Aceito pelo WhatsApp (id ${r.wamid}). Confira o celular de destino.`;
-      } catch (erro) {
-        $("#retorno-teste").textContent = `Falhou: ${erro.message}`;
-      } finally {
-        botao.disabled = false;
-      }
+        $("#retorno-teste").textContent = `Enviado (id ${r.wamid}). Confira o celular de destino.`;
+      }, $("#retorno-teste"));
     };
 
     $("#verificar").onclick = async () => mostrar(await api("api/whatsapp?verificar=1"));
     $("#reenviar").onclick = async () => mostrar(await api("api/whatsapp/reenviar", {}));
 
     api("api/whatsapp?verificar=1").then((s) => mostrar(s, true));
-    setInterval(() => api("api/whatsapp").then((s) => mostrar(s)).catch(() => {}), 5000); // só a fila local
+    // Atualiza sozinho: a cada 2 s enquanto espera o QR (ele muda a cada ~20 s), senão a cada 5 s.
+    (function atualizar() {
+      const rapido = ["aguardando_qr", "conectando"].includes(ultimo.celular?.status);
+      setTimeout(() => api("api/whatsapp").then((s) => mostrar(s)).catch(() => {}).finally(atualizar), rapido ? 2000 : 5000);
+    })();
   </script>
 </body>
 </html>

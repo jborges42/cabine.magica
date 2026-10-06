@@ -194,7 +194,7 @@ def processar(jpeg, preset="natural", molduras=None, qualidade=92):
         raise ValueError("imagem inválida")
     if preset not in PRESETS:
         raise ValueError(f"preset desconhecido: {preset}")
-    img = PRESETS[preset][1](img, rostos(img))
+    img = PRESETS[preset][1](img, rostos(img) if preset in ("estudio", "pele") else [])  # só quem usa rosto
     if molduras:
         img = aplicar_moldura(img, Path(molduras) / f"{img.shape[1]}x{img.shape[0]}.png")
     return cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, int(qualidade)])[1].tobytes()
