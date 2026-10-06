@@ -92,6 +92,7 @@ threading.Thread(target=publico.serve_forever, daemon=True).start()
 compartilhar.estado["url"] = f"http://127.0.0.1:{publico.server_port}"
 info = pedir(f"/api/fotos/{foto_id}/link")[1]
 assert info["url"].endswith(f"/f/{foto_id}/{compartilhar.assinatura(foto_id)}") and info["qr"].startswith("<svg")
+assert "viewBox" in info["qr"] and " width=" not in info["qr"], "QR sem viewBox é cortado pelo CSS e fica ilegível"
 with urllib.request.urlopen(info["url"]) as r:
     assert b"foto.jpg" in r.read()
 with urllib.request.urlopen(info["url"] + "/foto.jpg?baixar=1") as r:
