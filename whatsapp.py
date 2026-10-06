@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+import sys
 import threading
 import time
 import urllib.error
@@ -25,6 +26,19 @@ REPETIR = {1, 2, 4, 429, 80007, 130429, 131000, 131056, 131057}
 PAUSAR = {0, 3, 10, 190, 200, 368, 401, 403, 131005, 131031, 131042, 132001, 132015, 132016, 133010}
 TRAVA = threading.Lock()
 estado = {"pausa": None, "pausa_desde": 0.0}
+log = logging.getLogger("cabine")
+
+
+def gravar(caminho, dados):
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
+    temporario.write_bytes(dados)
+    for _ in range(40):
+        try:
+            return temporario.replace(caminho)
+        except PermissionError:
+            time.sleep(0.05)
+    temporario.replace(caminho)
 
 
 class ErroWhatsApp(Exception):
@@ -64,9 +78,7 @@ def salvar(novos):
         cfg["token"] = ""
     if cfg["provedor"] not in ("celular", "meta", "360dialog"):
         raise ValueError("provedor deve ser 'celular', 'meta' ou '360dialog'")
-    temporario = CONFIG.with_suffix(".tmp")
-    temporario.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporario.replace(CONFIG)
+    gravar(CONFIG, json.dumps(cfg, ensure_ascii=False, indent=2).encode())
     estado["pausa"] = None
 
 
@@ -83,9 +95,9 @@ def _endpoint(cfg, recurso):
     return f"{base}/{cfg['phone_number_id']}/{recurso}".rstrip("/"), {"Authorization": f"Bearer {cfg['token']}"}
 
 
-def _chamar(cfg, recurso, corpo=None, tipo="application/json", metodo="POST"):
+def _chamar(cfg, recurso, corpo=None, tipo="application/json", consulta=""):
     url, cabecalhos = _endpoint(cfg, recurso)
-    req = urllib.request.Request(url, data=corpo, method=metodo, headers={**cabecalhos, "Content-Type": tipo})
+    req = urllib.request.Request(url + consulta, data=corpo, headers={**cabecalhos, "Content-Type": tipo})
     try:
         with urllib.request.urlopen(req, timeout=40) as resposta:
             return json.load(resposta)
@@ -139,19 +151,7 @@ def enviar_template(cfg, destino, media_id):
 def conta(cfg):
     if cfg["provedor"] != "meta":
         return None
-    url, cabecalhos = _endpoint(cfg, "")
-    req = urllib.request.Request(f"{url}?fields=display_phone_number,verified_name,quality_rating", headers=cabecalhos)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resposta:
-            return json.load(resposta)
-    except urllib.error.HTTPError as erro:
-        try:
-            info = json.load(erro).get("error", {})
-        except ValueError:
-            info = {}
-        raise ErroWhatsApp(info.get("code", erro.code), info.get("message", erro.reason), http=erro.code) from None
-    except (urllib.error.URLError, TimeoutError, OSError) as erro:
-        raise ErroWhatsApp(None, f"sem conexão com o WhatsApp ({erro})") from None
+    return _chamar(cfg, "", consulta="?fields=display_phone_number,verified_name,quality_rating")
 
 
 def _ler(caminho):
@@ -159,14 +159,7 @@ def _ler(caminho):
 
 
 def _gravar(caminho, pedido):
-    temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
-    temporario.write_text(json.dumps(pedido, ensure_ascii=False, indent=2), encoding="utf-8")
-    for tentativa in range(40):
-        try:
-            return temporario.replace(caminho)
-        except PermissionError:
-            time.sleep(0.05)
-    temporario.replace(caminho)
+    gravar(caminho, json.dumps(pedido, ensure_ascii=False, indent=2).encode())
 
 
 def _mais_tarde(pedido):
@@ -206,7 +199,7 @@ def processar(caminho, fotos, cfg):
     except OSError as erro:
         pedido.update(status="erro", erro=f"foto não encontrada ({erro})")
     except Exception as erro:
-        logging.getLogger("cabine").exception("envio %s falhou", caminho.name)
+        log.exception("envio %s falhou", caminho.name)
         pedido.update(status="erro", erro=f"falha inesperada ({erro!r})")
     with TRAVA:
         _gravar(caminho, pedido)
@@ -226,7 +219,7 @@ def trabalhar(fila, fotos):
                     if not processar(caminho, fotos, cfg):
                         break
                 except Exception:
-                    logging.getLogger("cabine").exception("pedido %s ilegível", caminho.name)
+                    log.exception("pedido %s ilegível", caminho.name)
         time.sleep(2)
 
 
@@ -253,7 +246,8 @@ def resumo(fila):
             pedido = _ler(caminho)
         except (OSError, ValueError):
             continue
-        contagem[pedido.get("status", "pendente")] = contagem.get(pedido.get("status", "pendente"), 0) + 1
+        status = pedido.get("status", "pendente")
+        contagem[status] = contagem.get(status, 0) + 1
         if pedido.get("erro") and len(erros) < 10:
             erros.append({"id": caminho.stem, "destino": pedido["destino"], "status": pedido["status"], "erro": pedido["erro"]})
     return {"fila": contagem, "erros": erros, "enviados": {"hora": enviados(fila, 1), "dia": enviados(fila, 24)}}
@@ -295,8 +289,6 @@ def iniciar(fila, fotos):
 
 
 if __name__ == "__main__":
-    import sys
-
     assert ErroWhatsApp(131056, "pair rate").tipo == "repetir"
     assert ErroWhatsApp(None, "sem internet").tipo == "repetir"
     assert ErroWhatsApp(190, "token expirado").tipo == "pausar"

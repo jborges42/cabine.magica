@@ -4,7 +4,6 @@ import re
 import secrets
 import struct
 import sys
-import time
 import webbrowser
 from datetime import datetime
 from functools import partial
@@ -18,6 +17,7 @@ import celular
 import compartilhar
 import tratamento
 import whatsapp
+from whatsapp import gravar
 
 RAIZ = Path(__file__).resolve().parent
 WEB = RAIZ / "web"
@@ -123,18 +123,6 @@ def salvar_imagem(campo, png):
     return nome
 
 
-def gravar(caminho, dados):
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
-    temporario.write_bytes(dados)
-    for tentativa in range(40):
-        try:
-            return temporario.replace(caminho)
-        except PermissionError:
-            time.sleep(0.05)
-    temporario.replace(caminho)
-
-
 def validar_id(foto_id):
     if not ID_FOTO.fullmatch(str(foto_id)) or not (ORIGINAIS / f"{foto_id}.jpg").exists():
         raise ValueError("foto não encontrada")
@@ -181,12 +169,12 @@ def salvar_foto(jpeg, preset=None):
     return foto_id
 
 
-def enfileirar_envio(foto_id, whatsapp):
+def enfileirar_envio(foto_id, numero):
     validar_id(foto_id)
     cfg = evento()
     if not cfg["whatsapp"]:
         raise ValueError("o envio por WhatsApp está desligado no painel do operador")
-    destino = normalizar_whatsapp(whatsapp)
+    destino = normalizar_whatsapp(numero)
     if not destino:
         raise ValueError("número de WhatsApp inválido")
     pedido = {
@@ -248,7 +236,7 @@ class Cabine(SimpleHTTPRequestHandler):
         if achado := re.fullmatch(r"/api/fotos/([\w-]+)/link", rota):
             return self.responder(200, link_download(achado[1]))
         if rota == "/api/whatsapp":
-            return self.responder(200, status_whatsapp("verificar" in parse_qs(urlsplit(self.path).query)))
+            return self.responder(200, status_whatsapp("verificar" in urlsplit(self.path).query))
         if achado := re.fullmatch(r"/fotos/([\w-]+)\.jpg", rota):
             return self.arquivo(FOTOS / f"{achado[1]}.jpg" if ID_FOTO.fullmatch(achado[1]) else None)
         super().do_GET()

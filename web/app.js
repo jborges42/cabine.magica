@@ -14,7 +14,7 @@ const MENSAGENS = {
   NotFoundError: "Nenhuma câmera encontrada. Conecte uma webcam USB.",
   NotReadableError: "A câmera está em uso por outro programa (Zoom, Teams, OBS…). Feche-o e tente de novo.",
   TimeoutError: "A câmera conectou mas não manda imagem. Verifique se está ligada (ou se a placa de captura tem sinal).",
-  Desconectada: "A câmera foi desconectada. Reconecte o cabo — a cabine volta sozinha.",
+  Desconectada: "A câmera foi desconectada. Reconecte o cabo e a cabine volta sozinha.",
 };
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 

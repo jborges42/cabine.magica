@@ -5,13 +5,16 @@ import threading
 import urllib.error
 import urllib.request
 from functools import partial
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 import cabine
+import celular
+import compartilhar
+import whatsapp
 
 assert cabine.normalizar_whatsapp("(49) 99999-1234") == "5549999991234"
 assert cabine.normalizar_whatsapp("4999991234") is None
@@ -101,7 +104,6 @@ assert pedir("/api/envios", json.dumps({"id": foto_id, "whatsapp": "(49) 99999-1
 assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
 cabine.EVENTO.unlink()
 
-import compartilhar
 
 compartilhar.SEGREDO = tmp / "segredo.key"
 assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
@@ -125,8 +127,6 @@ for ruim in (f"/f/{foto_id}/AAAAAAAAAAAAAAAA", f"/f/{foto_id}", "/api/presets", 
 publico.shutdown()
 compartilhar.estado["url"] = None
 
-import whatsapp
-from http.server import BaseHTTPRequestHandler
 
 RESPOSTAS = {
     "5549999990001": (200, {"messages": [{"id": "wamid.OK"}], "contacts": [{"wa_id": "5549999990001"}]}),
@@ -189,7 +189,6 @@ assert pedir("/api/whatsapp/reenviar", b"{}")[1]["fila"]["erro"] == 0
 assert whatsapp.estado["pausa"] is None
 api.shutdown()
 
-import celular
 
 enviados = []
 
