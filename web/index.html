@@ -41,6 +41,7 @@
         radial-gradient(55vmax 45vmax at 112% 118%, color-mix(in oklab, var(--cor-destaque) 24%, transparent), transparent 60%),
         var(--fundo);
     }
+    [hidden] { display: none !important; }
     button { font: inherit; color: inherit; cursor: pointer; }
     :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
@@ -96,7 +97,6 @@
     .formatos button small { font-weight: 400; opacity: .75; }
     .formatos button kbd { padding: 4px 7px; min-width: 0; }
     .formatos button[aria-pressed="true"] { background: var(--cor-primaria); border-color: color-mix(in oklab, var(--cor-primaria) 60%, #fff); color: #fff; }
-    .formatos button:disabled { display: none; }
     .dica strong { color: var(--texto); }
     kbd {
       display: inline-block; min-width: 2.3em; padding: 6px 9px; text-align: center;
@@ -176,7 +176,6 @@
     .secundario { background: transparent; border: 1px solid var(--linha); font-size: 18px; }
     .legal { margin-top: 4px; color: var(--suave); font-size: 13px; }
     .baixar { display: flex; align-items: center; gap: 16px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--linha); }
-    .baixar[hidden] { display: none; }
     #qr svg { display: block; width: 180px; height: 180px; border-radius: 8px; }
     .baixar p { color: var(--suave); font-size: 15px; }
     .baixar strong { display: block; color: var(--texto); font-size: 17px; }
@@ -241,10 +240,10 @@
         </div>
       </div>
       <form class="cartao" id="form" novalidate>
-        <p class="sobretitulo">Mundo SENAI 2026 · #EU_FUI!</p>
+        <p class="sobretitulo"></p>
         <h1 class="titulo" id="revisao-titulo">Ficou <em>incrível!</em></h1>
-        <label for="whatsapp">Digite seu WhatsApp para receber a foto</label>
-        <div class="campo">
+        <label class="so-whatsapp" for="whatsapp">Digite seu WhatsApp para receber a foto</label>
+        <div class="campo so-whatsapp">
           <span aria-hidden="true">+55</span>
           <input id="whatsapp" inputmode="numeric" autocomplete="off" placeholder="(49) 99999-9999" aria-describedby="erro legal">
         </div>
@@ -255,7 +254,7 @@
           <div id="qr" aria-hidden="true"></div>
           <p><strong>Ou baixe no seu celular</strong>Aponte a câmera para o QR Code: foto em alta qualidade para postar no Story ou no Feed.</p>
         </div>
-        <p class="legal" id="legal">Ao enviar, você autoriza o SENAI a mandar esta foto para o seu WhatsApp. Seu número não será usado para mais nada.</p>
+        <p class="legal so-whatsapp" id="legal">Ao enviar, você autoriza o SENAI a mandar esta foto para o seu WhatsApp. Seu número não será usado para mais nada.</p>
       </form>
     </div>
   </section>
@@ -277,6 +276,7 @@
     </div>
   </section>
 
+  <script src="moldura.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

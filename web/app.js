@@ -11,14 +11,6 @@ const video = Object.assign(document.createElement("video"), { muted: true, play
 const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]); // teclado, teclado numérico e passador de slides
 const CELULAR = /^[1-9]{2}9\d{8}$/; // DDD + 9 + 8 dígitos (mesma regra do cabine.py)
-const FONTE = '"Marca", "Century Gothic", sans-serif'; // Century Gothic da identidade SENAI (ver @font-face)
-// Formatos da foto (teclas 1–4 na tela ao vivo): recorte central do vídeo na proporção escolhida.
-const FORMATOS = [
-  { id: "story", nome: "Story", proporcao: 9 / 16, rotulo: "9:16" },
-  { id: "feed", nome: "Feed", proporcao: 4 / 5, rotulo: "4:5" },
-  { id: "quadrado", nome: "Quadrado", proporcao: 1, rotulo: "1:1" },
-  { id: "grande", nome: "Grande", proporcao: null, rotulo: "inteira" },
-];
 const MENSAGENS = {
   NotAllowedError: "O navegador bloqueou a câmera. Libere o acesso no ícone ao lado do endereço e tente de novo.",
   NotFoundError: "Nenhuma câmera encontrada. Conecte uma webcam USB.",
@@ -28,9 +20,10 @@ const MENSAGENS = {
 };
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
-let cfg, logo, moldura, stream, estado, upload, timer, presetAtual, formato;
+let cfg, cfgTexto, logo, moldura, stream, estado, upload, timer, presetAtual, formato;
 let cameras = [];
 let presets = [];
+let formatos = [];
 let tratando = Promise.resolve();
 let marco = 0; // quando a revisão/conclusão abriu: ignora o Enter "colado" da tela anterior
 let sessao = 0; // muda a cada foto: respostas atrasadas de um visitante não aparecem para o próximo
@@ -43,13 +36,18 @@ function mudar(novo) {
 }
 
 async function iniciar() {
-  cfg = await (await fetch("api/evento")).json();
+  cfgTexto = await (await fetch("api/evento")).text();
+  cfg = JSON.parse(cfgTexto);
+  document.title = ["Cabine Mágica", cfg.unidade].filter(Boolean).join(" · ");
   for (const chave in cfg) {
     if (chave.startsWith("cor_")) document.documentElement.style.setProperty(`--${chave.replaceAll("_", "-")}`, cfg[chave]);
   }
   $(".sobretitulo").textContent = [cfg.titulo, cfg.hashtag].filter(Boolean).join(" · ");
-  presets = await (await fetch("api/presets")).json();
-  formato = FORMATOS.find((f) => f.id === cfg.formato) ?? FORMATOS[0];
+  presets = (await (await fetch("api/presets")).json()).filter((p) => cfg.presets.includes(p.id));
+  formatos = FORMATOS.filter((f) => cfg.formatos.includes(f.id));
+  formato = formatos.find((f) => f.id === cfg.formato) ?? formatos[0];
+  document.querySelectorAll(".so-whatsapp").forEach((el) => (el.hidden = !cfg.whatsapp));
+  $(".ajustes").hidden = presets.length < 2;
   logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
   if (cfg.moldura_png) moldura = await imagem(cfg.moldura_png).catch(() => console.warn("moldura_png não carregou; usando a moldura desenhada"));
   await Promise.race([document.fonts.load(`700 10px ${FONTE}`), document.fonts.load(`400 10px ${FONTE}`), espera(2000)]);
@@ -61,6 +59,12 @@ async function iniciar() {
   manterTelaAcesa();
   requestAnimationFrame(quadro);
 }
+
+setInterval(async () => {
+  if (estado !== "ao-vivo" && estado !== "erro") return;
+  const atual = await fetch("api/evento").then((r) => r.text()).catch(() => cfgTexto);
+  if (atual !== cfgTexto) location.reload();
+}, 3000);
 
 // ---------- câmera ----------
 
@@ -106,8 +110,8 @@ function marcarFormato() {
   const trilha = stream?.getVideoTracks()[0];
   $("#camera").textContent = `${trilha?.label || "Câmera"} · ${formato.nome} · ${l}×${a}`;
   $("#formatos").replaceChildren(
-    ...FORMATOS.map((f, i) => {
-      const botao = Object.assign(document.createElement("button"), { type: "button", disabled: Boolean(moldura) });
+    ...(moldura || formatos.length < 2 ? [] : formatos).map((f, i) => {
+      const botao = Object.assign(document.createElement("button"), { type: "button" });
       botao.innerHTML = `<kbd>${i + 1}</kbd> ${f.nome} <small>${f.rotulo}</small>`;
       botao.setAttribute("aria-pressed", f === formato);
       botao.onclick = () => escolherFormato(f);
@@ -180,7 +184,7 @@ function camada(L, A) {
     const c = Object.assign(document.createElement("canvas"), { width: L, height: A });
     const g = c.getContext("2d");
     if (moldura) g.drawImage(moldura, 0, 0, L, A);
-    else desenharMoldura(g, L, A);
+    else desenharMoldura(g, L, A, cfg, logo);
     camadas.set(chave, c);
   }
   return camadas.get(chave);
@@ -195,87 +199,6 @@ function enviarMoldura(L, A) {
     moldurasEnviadas.set(chave, envio);
   }
   return moldurasEnviadas.get(chave);
-}
-
-// Proporções da barra lateral oficial (ref/barra_lateral.png), em múltiplos da largura da barra:
-// laranja até 2,51 (esq.) / 1,78 (dir.), vão, azul a partir de 3,79 / 3,06 → corte diagonal de ~36°.
-const BARRA = { laranja: [2.51, 1.78], azul: [3.79, 3.06], canto: 0.18, inclinacao: 0.73 };
-
-function desenharMoldura(g, L, A) {
-  const u = Math.min(L, A) / 100; // tudo proporcional: funciona em 720p, 1080p, 4K ou retrato
-  const barra = 4.6 * u, faixa = 15 * u, curva = 3 * u, respiro = 3.2 * u;
-  const base = A - faixa; // topo da faixa azul
-
-  // Barra lateral SENAI: bloco laranja, vão diagonal (a foto aparece) e azul que desce e vira a faixa.
-  g.fillStyle = cfg.cor_destaque;
-  g.beginPath();
-  g.moveTo(0, 0);
-  g.arcTo(barra, 0, barra, barra, BARRA.canto * barra);
-  g.lineTo(barra, BARRA.laranja[1] * barra);
-  g.lineTo(0, BARRA.laranja[0] * barra);
-  g.fill();
-  g.fillStyle = cfg.cor_primaria;
-  g.beginPath();
-  g.moveTo(0, BARRA.azul[0] * barra);
-  g.lineTo(barra, BARRA.azul[1] * barra);
-  g.arcTo(barra, base, barra + curva, base, curva);
-  g.lineTo(L, base);
-  g.lineTo(L, A);
-  g.lineTo(0, A);
-  g.fill();
-
-  // Bandeira da hashtag: laranja, apoiada na faixa, com o mesmo corte diagonal da barra.
-  const alturaBandeira = 8.4 * u;
-  const larguraHashtag = ajustar(g, cfg.hashtag, 700, 4.6 * u, L * 0.35);
-  const corte = alturaBandeira / BARRA.inclinacao;
-  const inicioTexto = L - respiro - larguraHashtag;
-  const xBandeira = inicioTexto - respiro - corte / 2;
-  g.fillStyle = cfg.cor_destaque;
-  g.beginPath();
-  g.moveTo(xBandeira, base);
-  g.lineTo(xBandeira + corte, base - alturaBandeira);
-  g.lineTo(L, base - alturaBandeira);
-  g.lineTo(L, base);
-  g.fill();
-  g.fillStyle = "#fff";
-  g.textAlign = "left";
-  g.textBaseline = "middle";
-  g.fillText(cfg.hashtag, inicioTexto, base - alturaBandeira / 2);
-
-  // Faixa: título + unidade à esquerda, divisor e assinatura SENAI à direita (como no modelo oficial).
-  const meio = base + faixa / 2;
-  const margem = barra + respiro;
-  let limite = L - respiro;
-  if (logo) {
-    const alturaLogo = 5.4 * u, larguraLogo = (alturaLogo * logo.width) / logo.height;
-    limite -= larguraLogo;
-    g.drawImage(logo, limite, meio - alturaLogo / 2, larguraLogo, alturaLogo);
-    limite -= respiro;
-    g.fillStyle = "rgb(255 255 255 / .45)";
-    g.fillRect(limite, meio - 3.4 * u, 0.18 * u, 6.8 * u);
-    limite -= respiro;
-  }
-  g.fillStyle = "#fff";
-  g.textBaseline = "alphabetic";
-  ajustar(g, cfg.titulo, 700, 5.2 * u, limite - margem);
-  g.fillText(cfg.titulo, margem, meio + 0.2 * u);
-  g.letterSpacing = `${0.55 * u}px`;
-  g.fillStyle = "rgb(255 255 255 / .8)";
-  ajustar(g, cfg.unidade, 400, 2.3 * u, limite - margem);
-  g.fillText(cfg.unidade, margem, meio + 4.3 * u);
-  g.letterSpacing = "0px";
-}
-
-// Define a fonte (e o espaçamento) e reduz o tamanho se o texto não couber em `max`.
-function ajustar(g, texto, peso, tamanho, max) {
-  g.font = `${peso} ${tamanho}px ${FONTE}`;
-  const largura = g.measureText(texto).width;
-  if (largura > max) {
-    const k = max / largura;
-    g.font = `${peso} ${tamanho * k}px ${FONTE}`;
-    g.letterSpacing = `${parseFloat(g.letterSpacing) * k}px`;
-  }
-  return Math.min(largura, max);
 }
 
 async function imagem(src) {
@@ -352,6 +275,7 @@ function mostrarFoto(src) {
 
 // Troca o ajuste (Natural, Luz de estúdio…). Só o último pedido importa; a fila evita corrida no servidor.
 function trocarPreset(passo) {
+  if (presets.length < 2) return;
   const i = presets.findIndex((p) => p.id === presetAtual);
   presetAtual = presets[(i + passo + presets.length) % presets.length].id;
   const escolhido = presetAtual;
@@ -397,7 +321,7 @@ function abrirRevisao() {
   atualizarFormulario();
   marcarPresets();
   mudar("revisao");
-  campo.focus();
+  (cfg.whatsapp ? campo : enviar).focus();
   marco = performance.now();
   inatividade(60_000);
 }
@@ -410,7 +334,7 @@ function mascara(digitos) {
 }
 
 function atualizarFormulario() {
-  enviar.firstElementChild.textContent = campo.value ? "Enviar foto" : "Pular e concluir";
+  enviar.firstElementChild.textContent = campo.value ? "Enviar foto" : cfg.whatsapp ? "Pular e concluir" : "Concluir";
   campo.removeAttribute("aria-invalid");
   $("#erro").textContent = "";
 }
@@ -494,7 +418,7 @@ addEventListener("keydown", (evento) => {
     if (DISPARO.has(evento.key)) {
       evento.preventDefault();
       fotografar();
-    } else if (/^[1-4]$/.test(evento.key) && !moldura) escolherFormato(FORMATOS[evento.key - 1]);
+    } else if (/^[1-9]$/.test(evento.key) && !moldura && formatos[evento.key - 1]) escolherFormato(formatos[evento.key - 1]);
     else if (tecla === "c") trocarCamera();
     else if (tecla === "f") telaCheia();
   } else if (estado === "revisao") {
@@ -502,11 +426,11 @@ addEventListener("keydown", (evento) => {
     else if (["+", "-", "ArrowRight", "ArrowLeft"].includes(evento.key)) {
       evento.preventDefault(); // + e − do teclado numérico trocam o ajuste
       trocarPreset(evento.key === "+" || evento.key === "ArrowRight" ? 1 : -1);
-    } else if (/^Numpad\d$/.test(evento.code) && !/^\d$/.test(evento.key)) {
+    } else if (cfg.whatsapp && /^Numpad\d$/.test(evento.code) && !/^\d$/.test(evento.key)) {
       evento.preventDefault(); // NumLock desligado: o teclado numérico manda "End", "↓"… em vez do dígito
       campo.value = mascara(campo.value + evento.code.at(-1));
       campo.dispatchEvent(new Event("input"));
-    } else if (evento.target === document.body) campo.focus(); // foco perdido: a tecla vai para o campo
+    } else if (cfg.whatsapp && evento.target === document.body) campo.focus(); // foco perdido: a tecla vai para o campo
   } else if (estado === "enviado" && performance.now() - marco > 800) {
     evento.preventDefault();
     voltarAoVivo();
