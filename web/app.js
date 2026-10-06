@@ -1,5 +1,3 @@
-// Cabine Mágica — SENAI Fraiburgo
-// Estados: carregando → ao-vivo → contagem → revisao → enviado → ao-vivo (ou erro)
 
 const $ = (seletor) => document.querySelector(seletor);
 const tela = $("#tela");
@@ -9,8 +7,8 @@ const enviar = $("#enviar");
 const foto = $("#foto");
 const video = Object.assign(document.createElement("video"), { muted: true, playsInline: true });
 const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]); // teclado, teclado numérico e passador de slides
-const CELULAR = /^[1-9]{2}9\d{8}$/; // DDD + 9 + 8 dígitos (mesma regra do cabine.py)
+const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]);
+const CELULAR = /^[1-9]{2}9\d{8}$/;
 const MENSAGENS = {
   NotAllowedError: "O navegador bloqueou a câmera. Libere o acesso no ícone ao lado do endereço e tente de novo.",
   NotFoundError: "Nenhuma câmera encontrada. Conecte uma webcam USB.",
@@ -25,10 +23,10 @@ let cameras = [];
 let presets = [];
 let formatos = [];
 let tratando = Promise.resolve();
-let marco = 0; // quando a revisão/conclusão abriu: ignora o Enter "colado" da tela anterior
-let sessao = 0; // muda a cada foto: respostas atrasadas de um visitante não aparecem para o próximo
-const camadas = new Map(); // moldura pré-desenhada por tamanho
-const moldurasEnviadas = new Map(); // tamanho → upload da camada para o servidor
+let marco = 0;
+let sessao = 0;
+const camadas = new Map();
+const moldurasEnviadas = new Map();
 
 function mudar(novo) {
   estado = novo;
@@ -66,12 +64,9 @@ setInterval(async () => {
   if (atual !== cfgTexto) location.reload();
 }, 3000);
 
-// ---------- câmera ----------
-
 async function abrirCamera(id) {
   mudar("carregando");
   stream?.getTracks().forEach((trilha) => trilha.stop());
-  // "max": pede acima de 8K e o Chrome escolhe o maior modo nativo que mantém o fps (sem isso, 640×480).
   const [largura, altura] = cfg.resolucao === "max" ? [7680, 4320] : cfg.resolucao.split("x").map(Number);
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -80,19 +75,17 @@ async function abrirCamera(id) {
         width: { ideal: largura },
         height: { ideal: altura },
         frameRate: { ideal: cfg.fps },
-        resizeMode: { ideal: "none" }, // modo nativo da câmera, sem reescala do navegador
+        resizeMode: { ideal: "none" },
       },
     });
     video.srcObject = stream;
     await Promise.race([video.play(), espera(8000).then(() => Promise.reject(new DOMException("sem imagem", "TimeoutError")))]);
   } catch (erro) {
-    // A câmera escolhida sumiu: usa a padrão sem esquecer a escolha (ela volta quando for reconectada).
     if (id && ["OverconstrainedError", "NotFoundError"].includes(erro.name)) return abrirCamera();
     return falha(MENSAGENS[erro.name] || `Não foi possível abrir a câmera (${erro.name}: ${erro.message}).`);
   }
   const trilha = stream.getVideoTracks()[0];
   trilha.onended = () => {
-    // Durante a revisão não interrompe quem está digitando; a câmera é reaberta ao voltar.
     if (estado === "ao-vivo" || estado === "contagem") falha(MENSAGENS.Desconectada);
   };
   cameras = await listarCameras();
@@ -118,18 +111,18 @@ function marcarFormato() {
       return botao;
     }),
   );
-  if (l) enviarMoldura(l, a).catch(() => {}); // adianta o upload da moldura deste tamanho
+  if (l) enviarMoldura(l, a).catch(() => {});
 }
 
 const listarCameras = async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
 const cameraAtual = () => stream?.getVideoTracks()[0]?.getSettings().deviceId;
 
 async function trocarCamera() {
-  cameras = await listarCameras(); // pega webcams plugadas depois de abrir
+  cameras = await listarCameras();
   if (cameras.length < 2) return;
   const atual = cameras.findIndex((c) => c.deviceId === cameraAtual());
   const proxima = cameras[(atual + 1) % cameras.length].deviceId;
-  localStorage.setItem("camera", proxima); // só a escolha explícita fica memorizada
+  localStorage.setItem("camera", proxima);
   abrirCamera(proxima);
 }
 
@@ -147,9 +140,6 @@ function manterTelaAcesa() {
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && pedir());
 }
 
-// ---------- desenho: vídeo + moldura ----------
-
-// Parte do vídeo que vira foto: o centro na proporção do formato (ou da moldura_png, se houver).
 function regiao() {
   const { videoWidth: vl, videoHeight: va } = video;
   const proporcao = moldura ? moldura.naturalWidth / moldura.naturalHeight : formato?.proporcao;
@@ -165,14 +155,13 @@ function desenharVideo(g, L, A, espelhar) {
   g.setTransform(1, 0, 0, 1, 0, 0);
 }
 
-// A prévia é desenhada no tamanho da tela (leve até com câmera 4K); a foto, em resolução total.
 function quadro() {
   if ((estado === "ao-vivo" || estado === "contagem") && video.videoWidth) {
     const [, , l, a] = regiao();
     const escala = Math.min(1, (screen.width * devicePixelRatio) / l, (screen.height * devicePixelRatio) / a);
     const L = Math.round(l * escala), A = Math.round(a * escala);
     if (tela.width !== L || tela.height !== A) [tela.width, tela.height] = [L, A];
-    desenharVideo(ctx, L, A, cfg.espelhar_previa); // prévia tipo espelho, como o celular
+    desenharVideo(ctx, L, A, cfg.espelhar_previa);
     ctx.drawImage(camada(L, A), 0, 0);
   }
   requestAnimationFrame(quadro);
@@ -190,7 +179,6 @@ function camada(L, A) {
   return camadas.get(chave);
 }
 
-// O servidor cola esta mesma camada na foto tratada: a moldura tem uma única fonte de verdade.
 function enviarMoldura(L, A) {
   const chave = `${L}x${A}`;
   if (!moldurasEnviadas.has(chave)) {
@@ -203,13 +191,11 @@ function enviarMoldura(L, A) {
 
 async function imagem(src) {
   const img = new Image();
-  img.crossOrigin = "anonymous"; // imagem de outro site sem CORS falha aqui, e não na hora da foto
+  img.crossOrigin = "anonymous";
   img.src = src;
   await img.decode();
   return img;
 }
-
-// ---------- fluxo da foto ----------
 
 async function fotografar() {
   if (estado !== "ao-vivo") return;
@@ -224,16 +210,14 @@ async function fotografar() {
       );
     }
     await espera(1000);
-    if (estado !== "contagem") return; // câmera caiu no meio da contagem
+    if (estado !== "contagem") return;
   }
   numero.textContent = "";
 
-  // Original em resolução total, sem moldura: o servidor trata e cola a moldura depois.
   const [, , l, a] = regiao().map(Math.round);
   const quadroTotal = Object.assign(document.createElement("canvas"), { width: l, height: a });
-  desenharVideo(quadroTotal.getContext("2d"), l, a, cfg.espelhar_foto); // sem espelho: banners e camisetas legíveis
+  desenharVideo(quadroTotal.getContext("2d"), l, a, cfg.espelhar_foto);
   if (!reduzirMovimento) $("#flash").animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 500, easing: "ease-out" });
-  // Prévia leve, igual à foto final (mesmo espelhamento), para aparecer na hora enquanto o servidor trata.
   const miniatura = Object.assign(document.createElement("canvas"), { width: tela.width, height: tela.height });
   const g = miniatura.getContext("2d");
   g.drawImage(quadroTotal, 0, 0, tela.width, tela.height);
@@ -247,7 +231,7 @@ async function fotografar() {
   presetAtual = cfg.preset;
   mostrarFoto(URL.createObjectURL(previa));
   upload = enviarMoldura(l, a)
-    .catch(() => {}) // sem moldura a foto ainda é salva
+    .catch(() => {})
     .then(() => postar(`api/fotos?preset=${presetAtual}`, original, "image/jpeg"))
     .then(({ id }) => {
       if (minha === sessao && presetAtual === cfg.preset) mostrarFoto(`fotos/${id}.jpg?v=${Date.now()}`);
@@ -260,20 +244,18 @@ async function fotografar() {
   abrirRevisao();
 }
 
-// QR Code para o visitante baixar a foto no celular (só aparece se o túnel público estiver no ar).
 async function mostrarQr(id, minha) {
   const { qr } = await fetch(`api/fotos/${id}/link`).then((r) => r.json()).catch(() => ({}));
   if (!qr || minha !== sessao || estado !== "revisao") return;
-  $("#qr").innerHTML = qr; // SVG gerado pelo próprio servidor
+  $("#qr").innerHTML = qr;
   $("#baixar").hidden = false;
 }
 
 function mostrarFoto(src) {
-  if (foto.src.startsWith("blob:")) URL.revokeObjectURL(foto.src); // evita acumular memória no evento
+  if (foto.src.startsWith("blob:")) URL.revokeObjectURL(foto.src);
   foto.src = src;
 }
 
-// Troca o ajuste (Natural, Luz de estúdio…). Só o último pedido importa; a fila evita corrida no servidor.
 function trocarPreset(passo) {
   if (presets.length < 2) return;
   const i = presets.findIndex((p) => p.id === presetAtual);
@@ -285,7 +267,7 @@ function trocarPreset(passo) {
   inatividade(60_000);
   foto.classList.add("tratando");
   tratando = tratando.catch(() => {}).then(async () => {
-    if (escolhido !== presetAtual || minha !== sessao) return; // já trocaram de novo ou é outra foto
+    if (escolhido !== presetAtual || minha !== sessao) return;
     try {
       const id = await doVisitante;
       await postar(`api/fotos/${id}/preset`, JSON.stringify({ preset: escolhido }), "application/json");
@@ -352,17 +334,17 @@ campo.addEventListener("input", () => {
 
 $("#form").addEventListener("submit", async (evento) => {
   evento.preventDefault();
-  if (performance.now() - marco < 800 || enviar.disabled) return; // Enter "colado" do disparo
+  if (performance.now() - marco < 800 || enviar.disabled) return;
   const digitos = campo.value.replace(/\D/g, "");
   if (digitos && !CELULAR.test(digitos)) return mostrarErro("Confira o número: DDD + celular com 9 dígitos.");
-  const minha = sessao; // o envio é deste visitante, mesmo que o próximo já esteja na tela
+  const minha = sessao;
   enviar.disabled = true;
   try {
     const id = await upload.catch(() => null);
     if (!id) return minha === sessao && mostrarErro("Não conseguimos salvar a foto. Aperte Esc e tire outra.");
-    await tratando.catch(() => {}); // a foto enviada precisa estar no ajuste escolhido
+    await tratando.catch(() => {});
     if (digitos) await postar("api/envios", JSON.stringify({ id, whatsapp: digitos }), "application/json");
-    if (minha !== sessao || estado !== "revisao") return; // a revisão expirou enquanto esperava
+    if (minha !== sessao || estado !== "revisao") return;
     if (!digitos) return concluir("Valeu pela visita!", "Sua foto ficou guardada aqui na cabine.");
     concluir("Prontinho!", `Sua foto será enviada para o WhatsApp ${campo.value}.`);
     acompanharEnvio(id, campo.value);
@@ -373,7 +355,6 @@ $("#form").addEventListener("submit", async (evento) => {
   }
 });
 
-// Mostra na tela final se o WhatsApp já entregou (quando a integração estiver configurada).
 async function acompanharEnvio(id, numero) {
   for (let i = 0; i < 5 && estado === "enviado"; i++) {
     await espera(1000);
@@ -405,11 +386,8 @@ function voltarAoVivo() {
 
 function telaCheia() {
   if (document.fullscreenElement) return document.exitFullscreen();
-  // Prende o Esc na página (ele é "Tirar outra foto"); para sair da tela cheia, segure o Esc.
   document.documentElement.requestFullscreen().then(() => navigator.keyboard?.lock?.(["Escape"])).catch(() => {});
 }
-
-// ---------- teclado e toque ----------
 
 addEventListener("keydown", (evento) => {
   if (evento.repeat) return;
@@ -424,13 +402,13 @@ addEventListener("keydown", (evento) => {
   } else if (estado === "revisao") {
     if (evento.key === "Escape") voltarAoVivo();
     else if (["+", "-", "ArrowRight", "ArrowLeft"].includes(evento.key)) {
-      evento.preventDefault(); // + e − do teclado numérico trocam o ajuste
+      evento.preventDefault();
       trocarPreset(evento.key === "+" || evento.key === "ArrowRight" ? 1 : -1);
     } else if (cfg.whatsapp && /^Numpad\d$/.test(evento.code) && !/^\d$/.test(evento.key)) {
-      evento.preventDefault(); // NumLock desligado: o teclado numérico manda "End", "↓"… em vez do dígito
+      evento.preventDefault();
       campo.value = mascara(campo.value + evento.code.at(-1));
       campo.dispatchEvent(new Event("input"));
-    } else if (cfg.whatsapp && evento.target === document.body) campo.focus(); // foco perdido: a tecla vai para o campo
+    } else if (cfg.whatsapp && evento.target === document.body) campo.focus();
   } else if (estado === "enviado" && performance.now() - marco > 800) {
     evento.preventDefault();
     voltarAoVivo();
@@ -441,7 +419,7 @@ $("#disparo").addEventListener("click", fotografar);
 tela.addEventListener("click", fotografar);
 $("#refazer").addEventListener("click", voltarAoVivo);
 navigator.mediaDevices.addEventListener("devicechange", async () => {
-  if (estado === "erro") return location.reload(); // webcam reconectada: volta sozinha
+  if (estado === "erro") return location.reload();
   const preferida = localStorage.getItem("camera");
   cameras = await listarCameras();
   if (estado === "ao-vivo" && preferida && preferida !== cameraAtual() && cameras.some((c) => c.deviceId === preferida)) abrirCamera(preferida);

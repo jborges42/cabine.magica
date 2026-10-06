@@ -6,15 +6,12 @@
   <title>Cabine Mágica · SENAI Fraiburgo</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📸</text></svg>">
   <style>
-    /* Century Gothic é a fonte da identidade SENAI. Se não estiver instalada (vem com o Office),
-       usa a TeX Gyre Adventor, clone livre incluído em fontes/ — funciona sem internet. */
     @font-face { font-family: "Marca"; font-weight: 400; src: local("Century Gothic"), local("CenturyGothic"), url("fontes/texgyreadventor-regular.otf"); }
     @font-face { font-family: "Marca"; font-weight: 700; src: local("Century Gothic Bold"), local("CenturyGothic-Bold"), url("fontes/texgyreadventor-bold.otf"); }
 
     :root {
-      /* sobrescritas pelo config.json (cor_primaria, cor_destaque) */
-      --cor-primaria: #164193;  /* azul SENAI */
-      --cor-destaque: #E84910;  /* laranja SENAI */
+      --cor-primaria: #164193;
+      --cor-destaque: #E84910;
       --fundo: #061131;
       --vidro: rgb(255 255 255 / .06);
       --linha: rgb(255 255 255 / .14);
@@ -32,7 +29,7 @@
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) auto;
       overflow: hidden;
-      padding-left: 26px; /* barra lateral */
+      padding-left: 26px;
       color: var(--texto);
       font: 400 18px/1.45 var(--fonte);
       -webkit-font-smoothing: antialiased;
@@ -45,13 +42,11 @@
     button { font: inherit; color: inherit; cursor: pointer; }
     :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
-    /* Barra lateral da identidade: laranja, vão diagonal de ~36°, azul (proporções de ref/barra_lateral.png) */
     .barra { --b: 26px; position: fixed; inset: 0 auto 0 0; width: var(--b); z-index: 2; pointer-events: none; }
     .barra::before, .barra::after { content: ""; position: absolute; left: 0; right: 0; }
     .barra::before { top: 0; height: calc(var(--b) * 2.51); background: var(--cor-destaque); clip-path: polygon(0 0, 100% 0, 100% 71%, 0 100%); }
     .barra::after { top: calc(var(--b) * 3.06); bottom: 0; background: var(--cor-primaria); clip-path: polygon(0 calc(var(--b) * .73), 100% 0, 100% 100%, 0 100%); }
 
-    /* ---------- topo ---------- */
     .topo { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 32px; }
     .marca { display: flex; align-items: center; gap: 20px; }
     .marca img { height: 34px; }
@@ -68,7 +63,6 @@
     [data-estado="ao-vivo"] .chip::before, [data-estado="contagem"] .chip::before { background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: pulsar 2s infinite; }
     [data-estado="erro"] .chip::before { background: var(--perigo); }
 
-    /* ---------- palco (prévia ao vivo) ---------- */
     .palco { position: relative; min-height: 0; }
     #tela {
       position: absolute; inset: 0; margin: auto; max-width: calc(100% - 64px); max-height: 100%;
@@ -84,7 +78,6 @@
       text-shadow: 0 0 80px color-mix(in oklab, var(--cor-destaque) 60%, transparent), 0 12px 50px rgb(0 0 0 / .5);
     }
 
-    /* ---------- controles ---------- */
     .controles { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 32px; padding: 22px 32px 28px; }
     [data-estado]:not([data-estado="ao-vivo"]) .controles { visibility: hidden; }
     .dica { display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: 15px; }
@@ -117,7 +110,6 @@
 
     .flash { position: fixed; inset: 0; z-index: 3; background: #fff; opacity: 0; pointer-events: none; }
 
-    /* ---------- painéis sobrepostos ---------- */
     .painel {
       position: fixed; inset: 0; display: none; place-items: center; padding: 40px 40px 40px 66px;
       background: rgb(6 17 49 / .86); backdrop-filter: blur(28px) saturate(1.2);

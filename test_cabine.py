@@ -1,4 +1,3 @@
-"""Auto-teste do servidor: python test_cabine.py"""
 import json
 import shutil
 import tempfile
@@ -15,9 +14,9 @@ import numpy as np
 import cabine
 
 assert cabine.normalizar_whatsapp("(49) 99999-1234") == "5549999991234"
-assert cabine.normalizar_whatsapp("4999991234") is None  # sem o 9
-assert cabine.normalizar_whatsapp("(09) 99999-1234") is None  # DDD inválido
-assert cabine.normalizar_whatsapp("٤٩٩٩٩٩٩١٢٣٤") is None  # dígitos não ASCII
+assert cabine.normalizar_whatsapp("4999991234") is None
+assert cabine.normalizar_whatsapp("(09) 99999-1234") is None
+assert cabine.normalizar_whatsapp("٤٩٩٩٩٩٩١٢٣٤") is None
 assert cabine.normalizar_whatsapp(None) is None
 
 tmp = Path(tempfile.mkdtemp())
@@ -38,13 +37,12 @@ def pedir(rota, corpo=None, tipo="application/json", **cabecalhos):
         return e.code, json.load(e)
 
 
-cena = np.full((48, 64, 3), (40, 60, 120), np.uint8)  # escura e quente
+cena = np.full((48, 64, 3), (40, 60, 120), np.uint8)
 jpeg = cv2.imencode(".jpg", cena)[1].tobytes()
 moldura = np.zeros((48, 64, 4), np.uint8)
-moldura[40:] = (255, 0, 0, 255)  # faixa azul opaca embaixo
+moldura[40:] = (255, 0, 0, 255)
 png = cv2.imencode(".png", moldura)[1].tobytes()
 
-# Só a própria cabine pode chamar a API
 assert pedir("/api/fotos", jpeg, "image/jpeg", Origin="https://site-qualquer.com")[0] == 403
 assert pedir("/api/presets", Host="cabine.atacante.com")[0] == 403
 
@@ -103,11 +101,10 @@ assert pedir("/api/envios", json.dumps({"id": foto_id, "whatsapp": "(49) 99999-1
 assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
 cabine.EVENTO.unlink()
 
-# ---------- Download pelo celular: servidor público separado, links assinados ----------
-import compartilhar  # noqa: E402
+import compartilhar
 
 compartilhar.SEGREDO = tmp / "segredo.key"
-assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None  # sem túnel: sem QR
+assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
 compartilhar.Publico.fotos = cabine.FOTOS
 publico = ThreadingHTTPServer(("127.0.0.1", 0), compartilhar.Publico)
 threading.Thread(target=publico.serve_forever, daemon=True).start()
@@ -128,11 +125,10 @@ for ruim in (f"/f/{foto_id}/AAAAAAAAAAAAAAAA", f"/f/{foto_id}", "/api/presets", 
 publico.shutdown()
 compartilhar.estado["url"] = None
 
-# ---------- WhatsApp: worker contra uma API falsa no formato da Cloud API ----------
-import whatsapp  # noqa: E402
-from http.server import BaseHTTPRequestHandler  # noqa: E402
+import whatsapp
+from http.server import BaseHTTPRequestHandler
 
-RESPOSTAS = {  # destino → (http, corpo)
+RESPOSTAS = {
     "5549999990001": (200, {"messages": [{"id": "wamid.OK"}], "contacts": [{"wa_id": "5549999990001"}]}),
     "5549999990002": (400, {"error": {"code": 131026, "message": "Message undeliverable"}}),
     "5549999990003": (400, {"error": {"code": 131056, "message": "pair rate limit"}}),
@@ -167,7 +163,7 @@ api = ThreadingHTTPServer(("127.0.0.1", 0), ApiFalsa)
 threading.Thread(target=api.serve_forever, daemon=True).start()
 whatsapp.CONFIG = tmp / "whatsapp.json"
 assert pedir("/api/whatsapp")[1]["configurado"] is False
-assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[0] == 502  # sem configuração
+assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[0] == 502
 assert pedir("/api/whatsapp/config", b'{"provedor": "pombo-correio"}')[0] == 400
 whatsapp.salvar({"provedor": "360dialog", "token": "CHAVE", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": f"http://127.0.0.1:{api.server_port}"})
 status = pedir("/api/whatsapp")[1]
@@ -193,8 +189,7 @@ assert pedir("/api/whatsapp/reenviar", b"{}")[1]["fila"]["erro"] == 0
 assert whatsapp.estado["pausa"] is None
 api.shutdown()
 
-# ---------- Modo celular (grátis): worker com o envio do celular simulado ----------
-import celular  # noqa: E402
+import celular
 
 enviados = []
 

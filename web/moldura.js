@@ -6,16 +6,13 @@ const FORMATOS = [
   { id: "grande", nome: "Grande", proporcao: null, rotulo: "inteira" },
 ];
 
-// Proporções da barra lateral oficial (ref/barra_lateral.png), em múltiplos da largura da barra:
-// laranja até 2,51 (esq.) / 1,78 (dir.), vão, azul a partir de 3,79 / 3,06 → corte diagonal de ~36°.
 const BARRA = { laranja: [2.51, 1.78], azul: [3.79, 3.06], canto: 0.18, inclinacao: 0.73 };
 
 function desenharMoldura(g, L, A, cfg, logo) {
-  const u = Math.min(L, A) / 100; // tudo proporcional: funciona em 720p, 1080p, 4K ou retrato
+  const u = Math.min(L, A) / 100;
   const barra = 4.6 * u, faixa = 15 * u, curva = 3 * u, respiro = 3.2 * u;
-  const base = A - faixa; // topo da faixa azul
+  const base = A - faixa;
 
-  // Barra lateral SENAI: bloco laranja, vão diagonal (a foto aparece) e azul que desce e vira a faixa.
   g.fillStyle = cfg.cor_destaque;
   g.beginPath();
   g.moveTo(0, 0);
@@ -33,7 +30,6 @@ function desenharMoldura(g, L, A, cfg, logo) {
   g.lineTo(0, A);
   g.fill();
 
-  // Bandeira da hashtag: laranja, apoiada na faixa, com o mesmo corte diagonal da barra.
   const alturaBandeira = 8.4 * u;
   const larguraHashtag = ajustar(g, cfg.hashtag, 700, 4.6 * u, L * 0.35);
   const corte = alturaBandeira / BARRA.inclinacao;
@@ -51,7 +47,6 @@ function desenharMoldura(g, L, A, cfg, logo) {
   g.textBaseline = "middle";
   g.fillText(cfg.hashtag, inicioTexto, base - alturaBandeira / 2);
 
-  // Faixa: título + unidade à esquerda, divisor e assinatura SENAI à direita (como no modelo oficial).
   const meio = base + faixa / 2;
   const margem = barra + respiro;
   let limite = L - respiro;
@@ -75,7 +70,6 @@ function desenharMoldura(g, L, A, cfg, logo) {
   g.letterSpacing = "0px";
 }
 
-// Define a fonte (e o espaçamento) e reduz o tamanho se o texto não couber em `max`.
 function ajustar(g, texto, peso, tamanho, max) {
   g.font = `${peso} ${tamanho}px ${FONTE}`;
   const largura = g.measureText(texto).width;

@@ -533,7 +533,6 @@ Rodapé: ${cfg.unidade}`;
     });
 
     api("api/whatsapp?verificar=1").then((s) => mostrar(s, true));
-    // Atualiza sozinho: a cada 2 s enquanto espera o QR (ele muda a cada ~20 s), senão a cada 5 s.
     (function atualizar() {
       const rapido = ["aguardando_qr", "conectando"].includes(ultimo.celular?.status);
       setTimeout(() => api("api/whatsapp").then((s) => mostrar(s)).catch(() => {}).finally(atualizar), rapido ? 2000 : 5000);
