@@ -48,7 +48,7 @@ async function iniciar() {
   formato = formatos.find((f) => f.id === cfg.formato) ?? formatos[0];
   document.querySelectorAll(".so-whatsapp").forEach((el) => (el.hidden = !cfg.whatsapp));
   $(".ajustes").hidden = presets.length < 2;
-  logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
+  if (cfg.logo) logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
   if (cfg.moldura_png) moldura = await imagem(cfg.moldura_png).catch(() => console.warn("moldura_png não carregou; usando a moldura desenhada"));
   await Promise.race([document.fonts.load(`700 10px ${FONTE}`), document.fonts.load(`400 10px ${FONTE}`), espera(2000)]);
   document.fonts.onloadingdone = () => {
