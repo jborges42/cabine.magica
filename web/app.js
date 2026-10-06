@@ -242,7 +242,7 @@ function mascara(digitos) {
 }
 
 function atualizarFormulario() {
-  enviar.firstElementChild.textContent = campo.value ? "Enviar para meu WhatsApp" : "Pular e concluir";
+  enviar.firstElementChild.textContent = campo.value ? "Enviar foto" : "Pular e concluir";
   campo.removeAttribute("aria-invalid");
   $("#erro").textContent = "";
 }

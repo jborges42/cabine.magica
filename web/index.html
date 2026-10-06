@@ -32,7 +32,7 @@
       display: grid;
       grid-template-rows: auto minmax(0, 1fr) auto;
       overflow: hidden;
-      padding-left: 14px; /* barra lateral */
+      padding-left: 26px; /* barra lateral */
       color: var(--texto);
       font: 400 18px/1.45 var(--fonte);
       -webkit-font-smoothing: antialiased;
@@ -45,7 +45,7 @@
     :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
     /* Barra lateral da identidade: laranja, vão diagonal de ~36°, azul (proporções de ref/barra_lateral.png) */
-    .barra { --b: 14px; position: fixed; inset: 0 auto 0 0; width: var(--b); z-index: 2; pointer-events: none; }
+    .barra { --b: 26px; position: fixed; inset: 0 auto 0 0; width: var(--b); z-index: 2; pointer-events: none; }
     .barra::before, .barra::after { content: ""; position: absolute; left: 0; right: 0; }
     .barra::before { top: 0; height: calc(var(--b) * 2.51); background: var(--cor-destaque); clip-path: polygon(0 0, 100% 0, 100% 71%, 0 100%); }
     .barra::after { top: calc(var(--b) * 3.06); bottom: 0; background: var(--cor-primaria); clip-path: polygon(0 calc(var(--b) * .73), 100% 0, 100% 100%, 0 100%); }
@@ -109,7 +109,7 @@
 
     /* ---------- painéis sobrepostos ---------- */
     .painel {
-      position: fixed; inset: 0; display: none; place-items: center; padding: 40px 40px 40px 54px;
+      position: fixed; inset: 0; display: none; place-items: center; padding: 40px 40px 40px 66px;
       background: rgb(6 17 49 / .72); backdrop-filter: blur(28px) saturate(1.2);
     }
     [data-estado="revisao"] #revisao, [data-estado="enviado"] #enviado, [data-estado="erro"] #erro-painel { display: grid; }
@@ -177,7 +177,7 @@
     @media (max-width: 1000px) {
       .revisao { grid-template-columns: 1fr; gap: 28px; }
       #foto { max-height: 40vh; }
-      .painel { overflow-y: auto; padding: 20px 20px 20px 34px; }
+      .painel { overflow-y: auto; padding: 20px 20px 20px 46px; }
       .dica, .marca span { display: none; }
       .controles { grid-template-columns: 1fr; justify-items: center; }
     }
