@@ -12,7 +12,6 @@ const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]); // teclado, teclado numérico e passador de slides
 const CELULAR = /^[1-9]{2}9\d{8}$/; // DDD + 9 + 8 dígitos (mesma regra do cabine.py)
 const FONTE = '"Marca", "Century Gothic", sans-serif'; // Century Gothic da identidade SENAI (ver @font-face)
-const PADRAO = { titulo: "", unidade: "", hashtag: "", espelhar_previa: true, espelhar_foto: true, contagem: 3, resolucao: "max", fps: 30, preset: "natural", formato: "feed" };
 // Formatos da foto (teclas 1–4 na tela ao vivo): recorte central do vídeo na proporção escolhida.
 const FORMATOS = [
   { id: "story", nome: "Story", proporcao: 9 / 16, rotulo: "9:16" },
@@ -44,18 +43,12 @@ function mudar(novo) {
 }
 
 async function iniciar() {
-  const resposta = await fetch("config.json");
-  try {
-    cfg = { ...PADRAO, ...(await resposta.json()) };
-  } catch (erro) {
-    throw new Error(`web/config.json tem um erro de digitação (${erro.message})`);
-  }
+  cfg = await (await fetch("api/evento")).json();
   for (const chave in cfg) {
     if (chave.startsWith("cor_")) document.documentElement.style.setProperty(`--${chave.replaceAll("_", "-")}`, cfg[chave]);
   }
   $(".sobretitulo").textContent = [cfg.titulo, cfg.hashtag].filter(Boolean).join(" · ");
   presets = await (await fetch("api/presets")).json();
-  if (!presets.some((p) => p.id === cfg.preset)) throw new Error(`web/config.json: preset "${cfg.preset}" não existe (use ${presets.map((p) => p.id).join(", ")})`);
   formato = FORMATOS.find((f) => f.id === cfg.formato) ?? FORMATOS[0];
   logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
   if (cfg.moldura_png) moldura = await imagem(cfg.moldura_png).catch(() => console.warn("moldura_png não carregou; usando a moldura desenhada"));
@@ -75,7 +68,7 @@ async function abrirCamera(id) {
   mudar("carregando");
   stream?.getTracks().forEach((trilha) => trilha.stop());
   // "max": pede acima de 8K e o Chrome escolhe o maior modo nativo que mantém o fps (sem isso, 640×480).
-  const [largura, altura] = cfg.resolucao === "max" ? [7680, 4320] : cfg.resolucao;
+  const [largura, altura] = cfg.resolucao === "max" ? [7680, 4320] : cfg.resolucao.split("x").map(Number);
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {

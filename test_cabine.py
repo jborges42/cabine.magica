@@ -1,5 +1,6 @@
 """Auto-teste do servidor: python test_cabine.py"""
 import json
+import shutil
 import tempfile
 import threading
 import urllib.error
@@ -21,6 +22,7 @@ assert cabine.normalizar_whatsapp(None) is None
 
 tmp = Path(tempfile.mkdtemp())
 cabine.FOTOS, cabine.ORIGINAIS, cabine.MOLDURAS, cabine.FILA = tmp / "fotos", tmp / "fotos/originais", tmp / "molduras", tmp / "fila"
+cabine.EVENTO, cabine.WEB = tmp / "evento.json", shutil.copytree(cabine.WEB, tmp / "web", ignore=shutil.ignore_patterns("evento"))
 servidor = ThreadingHTTPServer(("127.0.0.1", 0), partial(cabine.Cabine, directory=cabine.WEB))
 threading.Thread(target=servidor.serve_forever, daemon=True).start()
 base = f"http://127.0.0.1:{servidor.server_port}"
@@ -79,7 +81,27 @@ pedido = json.loads((cabine.FILA / f"{foto_id}.json").read_text(encoding="utf-8"
 assert pedido["destino"] == "5549999991234" and pedido["status"] == "pendente" and pedido["foto"] == f"{foto_id}.jpg"
 assert pedir(f"/api/envios/{foto_id}")[1]["status"] == "pendente"
 
-assert "hashtag" in pedir("/config.json")[1]
+cfg = pedir("/api/evento")[1]
+assert cfg["titulo"] == "MUNDO SENAI 2026" and cfg["formatos"] == list(cabine.FORMATOS) and cfg["whatsapp"] is True
+status, cfg = pedir("/api/evento", json.dumps({"titulo": "FEIRA 2027", "formatos": ["story", "feed"], "formato": "story", "presets": ["natural", "pb"], "contagem": 5}).encode())
+assert status == 200 and cfg["titulo"] == "FEIRA 2027" and cfg["unidade"] == "SENAI FRAIBURGO" and cfg["contagem"] == 5
+assert json.loads(cabine.EVENTO.read_text(encoding="utf-8"))["formato"] == "story"
+for ruim in ({"formatos": []}, {"formato": "grande"}, {"preset": "vivido"}, {"presets": ["natural", "neon"]}, {"cor_destaque": "laranja"},
+             {"contagem": "3"}, {"contagem": True}, {"resolucao": "8k"}, {"titulo": "x" * 61}, {"moldura_png": "../cabine.py"},
+             {"moldura_png": "evento/nao-existe.png"}, {"qualidade_jpeg": 2}, {"whatsapp": "sim"}):
+    assert pedir("/api/evento", json.dumps(ruim).encode())[0] == 400, ruim
+assert pedir("/api/evento", b'{"titulo": "outro"}', Origin="https://site-qualquer.com")[0] == 403
+assert pedir("/api/evento/imagem?campo=moldura_png", jpeg, "image/png")[0] == 400
+assert pedir("/api/evento/imagem?campo=../../x", png, "image/png")[0] == 400
+status, imagem = pedir("/api/evento/imagem?campo=moldura_png", png, "image/png")
+assert status == 201 and (cabine.WEB / imagem["caminho"]).read_bytes() == png
+assert pedir("/api/evento", json.dumps({"moldura_png": imagem["caminho"]}).encode())[1]["moldura_png"] == imagem["caminho"]
+cabine.EVENTO.write_text('{"titulo": 7, "contagem": 4}', encoding="utf-8")
+assert pedir("/api/evento")[1]["titulo"] == "MUNDO SENAI 2026" and pedir("/api/evento")[1]["contagem"] == 4, "valor salvo inválido volta ao padrão"
+assert pedir("/api/evento", b'{"whatsapp": false, "qr_download": false}')[0] == 200
+assert pedir("/api/envios", json.dumps({"id": foto_id, "whatsapp": "(49) 99999-1234"}).encode())[0] == 400, "WhatsApp desligado"
+assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
+cabine.EVENTO.unlink()
 
 # ---------- Download pelo celular: servidor público separado, links assinados ----------
 import compartilhar  # noqa: E402
