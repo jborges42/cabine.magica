@@ -9,6 +9,7 @@ import logging
 import re
 import secrets
 import struct
+import sys
 import webbrowser
 from datetime import datetime
 from functools import partial
@@ -235,7 +236,8 @@ if __name__ == "__main__":
     url = f"http://127.0.0.1:{PORTA}"
     print(f"Cabine Mágica no ar em {url}  (Ctrl+C para encerrar; registros em cabine.log)")
     print(f"Painel do operador (WhatsApp, fila de envios): {url}/operador.html")
-    webbrowser.open(url)
+    if "--sem-navegador" not in sys.argv:  # no quiosque, quem abre o Chrome é o atalho de inicialização
+        webbrowser.open(url)
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
