@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 (06/10/2026)
+
+- Presets de tratamento (Natural, Luz de estúdio, Pele suave, Vívido, P&B, Original) com OpenCV e YuNet.
+- Troca do ajuste na revisão; original guardado em resolução total.
+- Câmera no maior modo nativo, com fps configurável.
+- Envio pelo WhatsApp oficial (Cloud API e 360dialog) a partir da fila.
+- Painel do operador para configurar, testar e acompanhar os envios.
+
 ## 0.1.0 (06/10/2026)
 
 - Prévia ao vivo da webcam com a moldura do evento e foto pelo teclado.
