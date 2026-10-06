@@ -81,6 +81,30 @@ assert pedir(f"/api/envios/{foto_id}")[1]["status"] == "pendente"
 
 assert "hashtag" in pedir("/config.json")[1]
 
+# ---------- Download pelo celular: servidor público separado, links assinados ----------
+import compartilhar  # noqa: E402
+
+compartilhar.SEGREDO = tmp / "segredo.key"
+assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None  # sem túnel: sem QR
+compartilhar.Publico.fotos = cabine.FOTOS
+publico = ThreadingHTTPServer(("127.0.0.1", 0), compartilhar.Publico)
+threading.Thread(target=publico.serve_forever, daemon=True).start()
+compartilhar.estado["url"] = f"http://127.0.0.1:{publico.server_port}"
+info = pedir(f"/api/fotos/{foto_id}/link")[1]
+assert info["url"].endswith(f"/f/{foto_id}/{compartilhar.assinatura(foto_id)}") and info["qr"].startswith("<svg")
+with urllib.request.urlopen(info["url"]) as r:
+    assert b"foto.jpg" in r.read()
+with urllib.request.urlopen(info["url"] + "/foto.jpg?baixar=1") as r:
+    assert r.headers["Content-Disposition"].startswith("attachment") and r.read() == (cabine.FOTOS / f"{foto_id}.jpg").read_bytes()
+for ruim in (f"/f/{foto_id}/AAAAAAAAAAAAAAAA", f"/f/{foto_id}", "/api/presets", "/config.json", f"/f/../{foto_id}/x"):
+    try:
+        urllib.request.urlopen(compartilhar.estado["url"] + ruim)
+        raise AssertionError(f"servidor público respondeu {ruim}")
+    except urllib.error.HTTPError as e:
+        assert e.code == 404, ruim
+publico.shutdown()
+compartilhar.estado["url"] = None
+
 # ---------- WhatsApp: worker contra uma API falsa no formato da Cloud API ----------
 import whatsapp  # noqa: E402
 from http.server import BaseHTTPRequestHandler  # noqa: E402

@@ -17,6 +17,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import segno
+
+import compartilhar
 import tratamento
 import whatsapp
 
@@ -115,6 +118,13 @@ def status_envio(foto_id):
     return {"status": pedido["status"], "erro": pedido.get("erro")}
 
 
+def link_download(foto_id):
+    """URL pública (túnel) e QR Code para o visitante baixar a foto no celular."""
+    url = compartilhar.link(validar_id(foto_id))
+    qr = segno.make(url, error="m").svg_inline(scale=5, border=2, dark="#061131", light="#ffffff") if url else None
+    return {"url": url, "qr": qr, "erro": compartilhar.estado["erro"]}
+
+
 def status_whatsapp(verificar=False):
     """Painel do operador: configuração (sem o token), pausa, fila e, se pedido, a conta na API."""
     cfg = whatsapp.carregar()
@@ -136,6 +146,8 @@ class Cabine(SimpleHTTPRequestHandler):
             return self.responder(200, [{"id": chave, "nome": nome} for chave, (nome, _) in tratamento.PRESETS.items()])
         if achado := re.fullmatch(r"/api/envios/([\w-]+)", rota):
             return self.responder(200, status_envio(achado[1]))
+        if achado := re.fullmatch(r"/api/fotos/([\w-]+)/link", rota):
+            return self.responder(200, link_download(achado[1]))
         if rota == "/api/whatsapp":
             return self.responder(200, status_whatsapp("verificar" in parse_qs(urlsplit(self.path).query)))
         if achado := re.fullmatch(r"/fotos/([\w-]+)\.jpg", rota):
@@ -233,6 +245,7 @@ if __name__ == "__main__":
     # Só 127.0.0.1: a cabine não fica exposta na rede do evento.
     servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), partial(Cabine, directory=WEB))
     whatsapp.iniciar(FILA, FOTOS)
+    compartilhar.iniciar(FOTOS)
     url = f"http://127.0.0.1:{PORTA}"
     print(f"Cabine Mágica no ar em {url}  (Ctrl+C para encerrar; registros em cabine.log)")
     print(f"Painel do operador (WhatsApp, fila de envios): {url}/operador.html")
