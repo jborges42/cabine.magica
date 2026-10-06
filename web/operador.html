@@ -46,7 +46,8 @@
     input[type="range"] { padding: 0; accent-color: var(--laranja); }
     .arquivo { display: inline-flex; position: relative; padding: 13px 18px; border-radius: 12px; border: 1px solid var(--linha); color: #fff; font-weight: 700; font-size: 16px; line-height: 1.2; cursor: pointer; }
     .arquivo input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-    .salvar { display: grid; gap: 10px; }
+    .salvar, #form-limites { display: grid; gap: 12px; }
+    #form-limites { margin: 18px 0; }
     @media (max-width: 1000px) { .cabine { grid-template-columns: 1fr; } .lateral { position: static; } }
     @media (max-width: 700px) {
       body { padding: 18px 16px 40px 42px; }
@@ -216,18 +217,31 @@
         <ol>
           <li>Num celular com o <strong>chip do evento</strong> e o WhatsApp (ou WhatsApp Business) instalado, abra <strong>Configurações → Aparelhos conectados → Conectar aparelho</strong>.</li>
           <li>Clique em <strong>Conectar celular</strong> abaixo e escaneie o QR Code que aparecer aqui.</li>
-          <li>Pronto: os números digitados na cabine recebem a foto como <strong>imagem</strong> e como <strong>arquivo em qualidade total</strong>.</li>
+          <li>Pronto: os números digitados na cabine recebem a foto como <strong>imagem</strong> e, se ligado abaixo, também como <strong>arquivo em qualidade total</strong>.</li>
         </ol>
         <div class="linha">
           <button type="button" id="conectar-celular">Conectar celular</button>
           <button type="button" class="secundario" id="desconectar-celular">Desconectar</button>
         </div>
+        <form id="form-limites">
+          <h3>Limites de envio</h3>
+          <div class="pares">
+            <label>Por hora<input name="limite_hora" type="number" min="1" step="1" required></label>
+            <label>Por dia (24 h)<input name="limite_dia" type="number" min="1" step="1" required></label>
+          </div>
+          <label class="chave"><span>Enviar também o arquivo em qualidade total<small>Dobra as mensagens por visitante. Desligado, a alta qualidade fica no QR de download.</small></span><input type="checkbox" name="enviar_arquivo"></label>
+          <p id="uso"></p>
+          <button>Salvar limites</button>
+          <p id="retorno-limites" role="status"></p>
+        </form>
         <div class="alerta">
           <p><strong>Para não perder o número:</strong> este modo usa o WhatsApp como um "WhatsApp Web" automático, o que não é oficial.</p>
           <ul>
             <li>Use um <strong>chip só para o evento</strong>, nunca o número pessoal nem o oficial do SENAI.</li>
             <li>Ative o chip uns dias antes: foto de perfil, nome "SENAI Fraiburgo · Cabine Mágica" e algumas conversas normais.</li>
             <li>Mantenha o celular carregado e com internet durante o evento.</li>
+            <li>O WhatsApp não publica um limite seguro. Há relatos de restrição a partir de 15 a 40 mensagens por dia para quem nunca falou com o número: comece com no máximo <strong>15 por hora e 50 por dia</strong>. O excedente espera na fila.</li>
+            <li>Se o WhatsApp recusar com o erro 463 (restrição), a cabine pausa sozinha. <strong>Não escaneie o QR de novo</strong>: espere a restrição acabar e clique em Reconectar.</li>
             <li>A cabine já se protege: confere se o número tem WhatsApp, espera de 8 a 20 s entre envios, mostra "digitando…" e varia o texto.</li>
           </ul>
         </div>
@@ -287,6 +301,7 @@ Rodapé: SENAI Fraiburgo</pre>
   <script>
     const $ = (s) => document.querySelector(s);
     const formConfig = $("#form-config");
+    const formLimites = $("#form-limites");
     let ultimo = {};
 
     function escolher(provedor) {
@@ -302,19 +317,26 @@ Rodapé: SENAI Fraiburgo</pre>
       const cel = s.celular;
       const [texto, classe] = s.pausa ? ["Envios pausados", "perigo"]
         : s.configurado ? ["Pronto para enviar", "ok"]
+        : cel?.status === "bloqueado" ? ["Bloqueado pelo WhatsApp", "perigo"]
         : cel?.status === "aguardando_qr" ? ["Escaneie o QR Code", "aviso"]
         : cel?.status === "erro" || s.erro_conta ? ["Erro na conexão", "perigo"]
         : ["Não conectado", "aviso"];
       $("#selo").textContent = texto;
       $("#selo").className = `selo ${classe}`;
       $("#conta").textContent = s.pausa ? `Pausado: ${s.pausa}. Corrija e salve (ou espere 10 min).`
-        : cel ? (cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em “Conectar celular”."))
+        : cel ? (cel.status === "bloqueado" ? cel.erro : cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em “Conectar celular”."))
         : s.erro_conta || (s.conta ? `Conectado: ${s.conta.display_phone_number} · ${s.conta.verified_name}` : s.configurado ? "Chave salva. Envie um teste para validar." : "");
       $("#qr-celular").hidden = !cel?.qr;
       if (cel?.qr) $("#qr-celular").innerHTML = `${cel.qr}<p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`;
       for (const chave of ["pendente", "enviado", "erro"]) $(`#n-${chave}`).textContent = s.fila[chave] ?? 0;
+      const cheio = s.enviados.hora >= s.limite_hora || s.enviados.dia >= s.limite_dia;
+      $("#uso").textContent = `Na última hora: ${s.enviados.hora} de ${s.limite_hora} · Em 24 h: ${s.enviados.dia} de ${s.limite_dia}${cheio ? " · limite atingido, a fila espera" : ""}`;
+      $("#conectar-celular").textContent = cel?.status === "bloqueado" ? "Reconectar" : "Conectar celular";
       $("#erros").replaceChildren(...s.erros.map((e) => Object.assign(document.createElement("div"), { textContent: `${e.destino} · ${e.status}: ${e.erro}` })));
       if (preencher) {
+        formLimites.elements.limite_hora.value = s.limite_hora;
+        formLimites.elements.limite_dia.value = s.limite_dia;
+        formLimites.elements.enviar_arquivo.checked = s.enviar_arquivo;
         escolher(s.provedor);
         for (const campo of ["phone_number_id", "template", "idioma", "versao_api"]) formConfig.elements[campo].value = s[campo] ?? "";
         formConfig.elements.token.placeholder = s.token_salvo ? "salvo (em branco mantém o atual)" : "cole aqui";
@@ -352,6 +374,14 @@ Rodapé: SENAI Fraiburgo</pre>
       if (ultimo.provedor !== "celular") await api("api/whatsapp/config", { provedor: "celular" });
       mostrar(await api("api/whatsapp/celular/conectar", {}), true);
     }, $("#retorno-config"));
+    formLimites.onsubmit = (e) => {
+      e.preventDefault();
+      const f = formLimites.elements;
+      acao(formLimites.querySelector("button"), async () => {
+        mostrar(await api("api/whatsapp/config", { limite_hora: Number(f.limite_hora.value), limite_dia: Number(f.limite_dia.value), enviar_arquivo: f.enviar_arquivo.checked }), true);
+        $("#retorno-limites").textContent = "Limites salvos.";
+      }, $("#retorno-limites"));
+    };
     $("#desconectar-celular").onclick = (e) => acao(e.target, async () => mostrar(await api("api/whatsapp/celular/desconectar", {})));
 
     $("#form-teste").onsubmit = (e) => {
