@@ -22,7 +22,7 @@ import numpy as np
 
 RAIZ = Path(__file__).resolve().parent
 CONFIG = RAIZ / "whatsapp.json"
-PADRAO = {"provedor": "meta", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica", "idioma": "pt_BR"}
+PADRAO = {"provedor": "meta", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": ""}
 LIMITE_IMAGEM = 5_000_000  # Cloud API: imagem JPEG/PNG de até 5 MB
 
 # Códigos oficiais (developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
@@ -56,7 +56,7 @@ def salvar(novos):
     cfg = carregar()
     for chave in PADRAO:
         valor = str(novos.get(chave, "")).strip()
-        if valor or chave != "token":
+        if valor or chave not in ("token", "api_base"):
             cfg[chave] = valor or PADRAO[chave]
     if cfg["provedor"] not in ("meta", "360dialog"):
         raise ValueError("provedor deve ser 'meta' ou '360dialog'")
@@ -71,9 +71,11 @@ def configurado(cfg):
 
 
 def _endpoint(cfg, recurso):
+    """URL e autenticação. api_base (opcional) aponta para outro parceiro compatível com a Cloud API."""
     if cfg["provedor"] == "360dialog":
-        return f"https://waba-v2.360dialog.io/{recurso}", {"D360-API-KEY": cfg["token"]}
-    return f"https://graph.facebook.com/{cfg['versao_api']}/{cfg['phone_number_id']}/{recurso}".rstrip("/"), {"Authorization": f"Bearer {cfg['token']}"}
+        return f"{cfg['api_base'] or 'https://waba-v2.360dialog.io'}/{recurso}", {"D360-API-KEY": cfg["token"]}
+    base = cfg["api_base"] or f"https://graph.facebook.com/{cfg['versao_api']}"
+    return f"{base}/{cfg['phone_number_id']}/{recurso}".rstrip("/"), {"Authorization": f"Bearer {cfg['token']}"}
 
 
 def _chamar(cfg, recurso, corpo=None, tipo="application/json", metodo="POST"):
