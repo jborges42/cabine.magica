@@ -1,0 +1,15 @@
+__pycache__/
+.venv/
+.DS_Store
+*.log
+*.tmp
+fotos/
+fila/
+molduras/
+ref/
+segredo.key
+evento.json
+whatsapp.json
+whatsapp-celular.sqlite3*
+web/evento/
+cloudflared*
