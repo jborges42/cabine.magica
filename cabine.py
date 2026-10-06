@@ -9,6 +9,7 @@ import logging
 import re
 import secrets
 import struct
+import sys
 import webbrowser
 from datetime import datetime
 from functools import partial
@@ -17,6 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import tratamento
+import whatsapp
 
 RAIZ = Path(__file__).resolve().parent
 WEB = RAIZ / "web"
@@ -113,6 +115,18 @@ def status_envio(foto_id):
     return {"status": pedido["status"], "erro": pedido.get("erro")}
 
 
+def status_whatsapp(verificar=False):
+    """Painel do operador: configuração (sem o token), pausa, fila e, se pedido, a conta na API."""
+    cfg = whatsapp.carregar()
+    situacao = {**{k: v for k, v in cfg.items() if k != "token"}, "token_salvo": bool(cfg["token"]), "configurado": whatsapp.configurado(cfg)}
+    if verificar and situacao["configurado"]:  # sob demanda: a Meta limita chamadas de gestão por hora
+        try:
+            situacao["conta"] = whatsapp.conta(cfg)
+        except whatsapp.ErroWhatsApp as erro:
+            situacao["erro_conta"] = str(erro)
+    return {**situacao, "pausa": whatsapp.estado["pausa"], **whatsapp.resumo(FILA)}
+
+
 class Cabine(SimpleHTTPRequestHandler):
     def do_GET(self):
         if not self.permitido():
@@ -122,6 +136,8 @@ class Cabine(SimpleHTTPRequestHandler):
             return self.responder(200, [{"id": chave, "nome": nome} for chave, (nome, _) in tratamento.PRESETS.items()])
         if achado := re.fullmatch(r"/api/envios/([\w-]+)", rota):
             return self.responder(200, status_envio(achado[1]))
+        if rota == "/api/whatsapp":
+            return self.responder(200, status_whatsapp("verificar" in parse_qs(urlsplit(self.path).query)))
         if achado := re.fullmatch(r"/fotos/([\w-]+)\.jpg", rota):
             return self.arquivo(FOTOS / f"{achado[1]}.jpg" if ID_FOTO.fullmatch(achado[1]) else None)
         super().do_GET()
@@ -144,6 +160,20 @@ class Cabine(SimpleHTTPRequestHandler):
                 dados = self.ler_json()
                 enfileirar_envio(dados.get("id"), dados.get("whatsapp"))
                 self.responder(201, {"ok": True})
+            elif url.path == "/api/whatsapp/config":
+                whatsapp.salvar(self.ler_json())
+                self.responder(200, status_whatsapp(verificar=True))
+            elif url.path == "/api/whatsapp/teste":
+                destino = normalizar_whatsapp(self.ler_json().get("numero"))
+                if not destino:
+                    raise ValueError("número de WhatsApp inválido")
+                try:
+                    self.responder(200, whatsapp.testar(destino, FOTOS))
+                except whatsapp.ErroWhatsApp as erro:
+                    self.responder(502, {"erro": str(erro)})
+            elif url.path == "/api/whatsapp/reenviar":
+                whatsapp.reenviar_erros(FILA)
+                self.responder(200, status_whatsapp())
             else:
                 self.responder(404, {"erro": "rota inexistente"})
         except ValueError as erro:  # inclui JSON malformado
@@ -202,9 +232,12 @@ if __name__ == "__main__":
     logging.basicConfig(filename=RAIZ / "cabine.log", level=logging.INFO, format="%(asctime)s %(message)s")
     # Só 127.0.0.1: a cabine não fica exposta na rede do evento.
     servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), partial(Cabine, directory=WEB))
+    whatsapp.iniciar(FILA, FOTOS)
     url = f"http://127.0.0.1:{PORTA}"
     print(f"Cabine Mágica no ar em {url}  (Ctrl+C para encerrar; registros em cabine.log)")
-    webbrowser.open(url)
+    print(f"Painel do operador (WhatsApp, fila de envios): {url}/operador.html")
+    if "--sem-navegador" not in sys.argv:  # no quiosque, quem abre o Chrome é o atalho de inicialização
+        webbrowser.open(url)
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
