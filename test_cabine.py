@@ -199,7 +199,8 @@ import celular  # noqa: E402
 enviados = []
 
 
-def envio_falso(destino, caminho, nome):
+def envio_falso(destino, caminho, nome, evento, arquivo):
+    assert evento == "MUNDO SENAI 2026 · SENAI FRAIBURGO" and arquivo is True, (evento, arquivo)
     jpeg = caminho.read_bytes()
     if destino.endswith("0002"):
         raise celular.ErroCelular("este número não tem WhatsApp", repetir=False)
@@ -209,6 +210,7 @@ def envio_falso(destino, caminho, nome):
     return "MSGID"
 
 
+enviar_real = celular.enviar
 celular.enviar, celular.iniciar = envio_falso, lambda: None
 whatsapp.salvar({"provedor": "celular"})
 cfg = whatsapp.carregar()
@@ -227,6 +229,44 @@ assert enviados == [("5549999990001", len((cabine.FOTOS / pedido["foto"]).read_b
 assert json.loads((cabine.FILA / "celular-3.json").read_text(encoding="utf-8"))["tentativas"] == 1
 assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[1]["wamid"] == "MSGID"
 assert pedir("/api/whatsapp/celular/desconectar", b"{}")[1]["celular"]["status"] == "desligado"
+
+status = pedir("/api/whatsapp/config", b'{"limite_hora": 1, "limite_dia": 3, "enviar_arquivo": false}')[1]
+assert status["provedor"] == "celular" and status["limite_hora"] == 1 and status["enviar_arquivo"] is False
+assert status["enviados"]["hora"] >= 1 and status["enviados"]["dia"] >= 1
+for ruim in (b'{"limite_hora": 0}', b'{"limite_dia": "muitos"}'):
+    assert pedir("/api/whatsapp/config", ruim)[0] == 400, ruim
+assert whatsapp.no_limite(whatsapp.carregar(), cabine.FILA), "uma foto enviada na última hora já atinge o limite de 1"
+whatsapp.salvar({"limite_hora": 100, "limite_dia": 100})
+assert not whatsapp.no_limite(whatsapp.carregar(), cabine.FILA)
+assert not whatsapp.no_limite({**whatsapp.carregar(), "provedor": "meta", "limite_hora": 1}, cabine.FILA), "limite vale só no modo celular"
+
+
+class FilaFalsa:
+    def __init__(self, resposta):
+        self.resposta, self.pedidos = resposta, []
+
+    def put(self, item):
+        _, job, pedido = item
+        self.pedidos.append(pedido)
+        celular._pendentes[job][1].append(self.resposta)
+        celular._pendentes[job][0].set()
+
+
+celular.INTERVALO = (0, 0)
+celular.estado.update(status="conectado", erro=None)
+celular._filas["pedidos"] = FilaFalsa(("ok", "3EB0463F9A"))
+assert enviar_real("5549999990001", tmp / "x.jpg", "x.jpg", "FEIRA 2027", False) == "3EB0463F9A"
+assert celular.estado["status"] == "conectado", "id de mensagem com 463 não é restrição"
+pedido_enviado = celular._filas["pedidos"].pedidos[0]
+assert "FEIRA 2027" in pedido_enviado["legenda"] and pedido_enviado["arquivo"] is False
+celular._filas["pedidos"] = FilaFalsa(("falhou", "server returned error 463"))
+try:
+    enviar_real("5549999990001", tmp / "x.jpg", "x.jpg")
+    raise AssertionError("o 463 deveria virar erro")
+except celular.ErroCelular as erro:
+    assert erro.repetir
+assert celular.estado["status"] == "bloqueado" and "463" in celular.estado["erro"]
+assert not whatsapp.configurado(whatsapp.carregar()), "bloqueado pausa a fila"
 
 servidor.shutdown()
 print("ok")

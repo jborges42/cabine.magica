@@ -27,7 +27,10 @@ import celular
 
 RAIZ = Path(__file__).resolve().parent
 CONFIG = RAIZ / "whatsapp.json"
-PADRAO = {"provedor": "celular", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": ""}
+PADRAO = {
+    "provedor": "celular", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica",
+    "idioma": "pt_BR", "api_base": "", "limite_hora": 15, "limite_dia": 50, "enviar_arquivo": True,
+}
 LIMITE_IMAGEM = 5_000_000  # Cloud API: imagem JPEG/PNG de até 5 MB
 
 # Códigos oficiais (developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
@@ -60,10 +63,17 @@ def salvar(novos):
     """Grava só as chaves conhecidas; token em branco mantém o atual."""
     cfg = carregar()
     anterior = cfg["provedor"]
-    for chave in PADRAO:
-        valor = str(novos.get(chave, "")).strip()
-        if valor or chave not in ("token", "api_base"):
-            cfg[chave] = valor or PADRAO[chave]
+    for chave, padrao in PADRAO.items():
+        if chave not in novos or chave == "token" and not str(novos[chave]).strip():
+            continue
+        if isinstance(padrao, bool):
+            cfg[chave] = novos[chave] is True
+        elif isinstance(padrao, int):
+            cfg[chave] = int(novos[chave])
+        else:
+            cfg[chave] = str(novos[chave]).strip() or padrao
+    if cfg["limite_hora"] < 1 or cfg["limite_dia"] < 1:
+        raise ValueError("os limites de envio precisam ser de pelo menos 1")
     if cfg["provedor"] != anterior and not str(novos.get("token", "")).strip():
         cfg["token"] = ""  # o token de um provedor não serve para outro
     if cfg["provedor"] not in ("celular", "meta", "360dialog"):
@@ -191,7 +201,7 @@ def processar(caminho, fotos, cfg):
         return True
     try:
         if cfg["provedor"] == "celular":
-            pedido["wamid"] = celular.enviar(pedido["destino"], fotos / pedido["foto"], f"cabine-magica-{pedido['foto']}")
+            pedido["wamid"] = celular.enviar(pedido["destino"], fotos / pedido["foto"], f"cabine-magica-{pedido['foto']}", pedido.get("evento", ""), cfg["enviar_arquivo"])
         else:
             if not pedido.get("media_id") or pedido.get("media_em", "") < (datetime.now() - timedelta(days=29)).isoformat():
                 pedido["media_id"] = subir_foto(cfg, jpeg_para_envio((fotos / pedido["foto"]).read_bytes()))  # vale 30 dias
@@ -230,12 +240,29 @@ def trabalhar(fila, fotos):
             estado["pausa"] = None
         if configurado(cfg) and not estado["pausa"]:
             for caminho in sorted(fila.glob("*.json")):
+                if no_limite(cfg, fila):
+                    break
                 try:
                     if not processar(caminho, fotos, cfg):
                         break
                 except Exception:  # pedido ilegível etc.: registra e segue com os outros
                     logging.getLogger("cabine").exception("pedido %s ilegível", caminho.name)
         time.sleep(2)
+
+
+def enviados(fila, horas):
+    desde = (datetime.now() - timedelta(hours=horas)).isoformat(timespec="seconds")
+    total = 0
+    for caminho in fila.glob("*.json"):
+        try:
+            total += _ler(caminho).get("enviado_em", "") >= desde
+        except (OSError, ValueError):
+            pass
+    return total
+
+
+def no_limite(cfg, fila):
+    return cfg["provedor"] == "celular" and (enviados(fila, 1) >= cfg["limite_hora"] or enviados(fila, 24) >= cfg["limite_dia"])
 
 
 def resumo(fila):
@@ -249,7 +276,7 @@ def resumo(fila):
         contagem[pedido.get("status", "pendente")] = contagem.get(pedido.get("status", "pendente"), 0) + 1
         if pedido.get("erro") and len(erros) < 10:
             erros.append({"id": caminho.stem, "destino": pedido["destino"], "status": pedido["status"], "erro": pedido["erro"]})
-    return {"fila": contagem, "erros": erros}
+    return {"fila": contagem, "erros": erros, "enviados": {"hora": enviados(fila, 1), "dia": enviados(fila, 24)}}
 
 
 def reenviar_erros(fila):
@@ -263,7 +290,7 @@ def reenviar_erros(fila):
     estado["pausa"] = None
 
 
-def testar(destino, fotos):
+def testar(destino, fotos, evento=""):
     """Envia agora (sem fila) uma imagem de teste: valida conexão, conta, token e template.
     Nunca usa foto de visitante: o teste pode ir para qualquer número."""
     cfg = carregar()
@@ -278,7 +305,7 @@ def testar(destino, fotos):
         teste.parent.mkdir(parents=True, exist_ok=True)
         teste.write_bytes(jpeg)
         try:
-            return {"wamid": celular.enviar(destino, teste, "teste-cabine-magica.jpg"), "wa_id": None}
+            return {"wamid": celular.enviar(destino, teste, "teste-cabine-magica.jpg", evento, cfg["enviar_arquivo"]), "wa_id": None}
         except celular.ErroCelular as erro:
             raise ErroWhatsApp("celular", str(erro)) from None
     wamid, wa_id = enviar_template(cfg, destino, subir_foto(cfg, jpeg_para_envio(jpeg)))

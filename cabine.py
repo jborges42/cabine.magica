@@ -113,6 +113,10 @@ def salvar_evento(novos):
     return cfg
 
 
+def nome_evento(cfg):
+    return " · ".join(filter(None, (cfg["titulo"], cfg["unidade"])))
+
+
 def salvar_imagem(campo, png):
     if campo not in ("logo", "moldura_png"):
         raise ValueError("campo de imagem inválido")
@@ -189,7 +193,8 @@ def salvar_foto(jpeg, preset=None):
 def enfileirar_envio(foto_id, whatsapp):
     """Cria fila/<id>.json com status 'pendente'; o whatsapp.py envia e atualiza o status."""
     validar_id(foto_id)
-    if not evento()["whatsapp"]:
+    cfg = evento()
+    if not cfg["whatsapp"]:
         raise ValueError("o envio por WhatsApp está desligado no painel do operador")
     destino = normalizar_whatsapp(whatsapp)
     if not destino:
@@ -199,6 +204,7 @@ def enfileirar_envio(foto_id, whatsapp):
         "canal": "whatsapp",
         "destino": destino,
         "status": "pendente",
+        "evento": nome_evento(cfg),
         "criado_em": datetime.now().isoformat(timespec="seconds"),
     }
     gravar(FILA / f"{foto_id}.json", json.dumps(pedido, ensure_ascii=False, indent=2).encode())
@@ -292,7 +298,7 @@ class Cabine(SimpleHTTPRequestHandler):
                 if not destino:
                     raise ValueError("número de WhatsApp inválido")
                 try:
-                    self.responder(200, whatsapp.testar(destino, FOTOS))
+                    self.responder(200, whatsapp.testar(destino, FOTOS, nome_evento(evento())))
                 except whatsapp.ErroWhatsApp as erro:
                     self.responder(502, {"erro": str(erro)})
             elif url.path == "/api/whatsapp/celular/conectar":
