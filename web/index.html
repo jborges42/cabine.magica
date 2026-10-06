@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cabine Mágica · SENAI Fraiburgo</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📸</text></svg>">
+  <!-- Sem internet as fontes caem para as do sistema; a cabine continua funcionando. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Unbounded:wght@600;800;900&display=swap">
+  <style>
+    :root {
+      --fundo: #060914;
+      --vidro: rgb(255 255 255 / .06);
+      --linha: rgb(255 255 255 / .13);
+      --texto: #F4F6FB;
+      --suave: #A9B2C8;
+      --perigo: #FF7A7A;
+      --ok: #2EE59D;
+      /* sobrescritas pelo config.json */
+      --cor-inicio: #0A2A6B;
+      --cor-fim: #1A6BFF;
+      --cor-destaque: #FFC21A;
+      --cor-texto-destaque: #0A1A3F;
+      --raio: 28px;
+      --display: "Unbounded", system-ui, sans-serif;
+      --ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    html, body { height: 100%; }
+    body {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      color: var(--texto);
+      font: 500 18px/1.45 var(--ui);
+      -webkit-font-smoothing: antialiased;
+      background:
+        radial-gradient(70vmax 60vmax at 0% -20%, color-mix(in oklab, var(--cor-fim) 38%, transparent), transparent 62%),
+        radial-gradient(60vmax 50vmax at 110% 120%, color-mix(in oklab, var(--cor-destaque) 16%, transparent), transparent 60%),
+        var(--fundo);
+    }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    :focus-visible { outline: 3px solid var(--cor-destaque); outline-offset: 3px; }
+
+    /* ---------- topo ---------- */
+    .topo { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 32px; }
+    .marca { display: flex; align-items: center; gap: 12px; font: 800 16px/1 var(--display); letter-spacing: .01em; }
+    .marca::before {
+      content: ""; width: 14px; height: 14px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--cor-destaque), var(--cor-fim));
+      box-shadow: 0 0 18px color-mix(in oklab, var(--cor-destaque) 70%, transparent);
+    }
+    .marca span { font: 500 14px/1 var(--ui); color: var(--suave); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 9px; max-width: 45vw;
+      padding: 9px 15px; border-radius: 999px; border: 1px solid var(--linha); background: var(--vidro);
+      color: var(--suave); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chip::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--suave); }
+    [data-estado="ao-vivo"] .chip::before, [data-estado="contagem"] .chip::before { background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: pulsar 2s infinite; }
+    [data-estado="erro"] .chip::before { background: var(--perigo); }
+
+    /* ---------- palco (prévia ao vivo) ---------- */
+    .palco { position: relative; min-height: 0; }
+    #tela {
+      position: absolute; inset: 0; margin: auto; max-width: calc(100% - 64px); max-height: 100%;
+      border-radius: var(--raio); background: #000;
+      box-shadow: 0 0 0 1px var(--linha), 0 40px 100px -30px rgb(0 0 0 / .8), 0 0 120px -40px var(--cor-fim);
+      transition: opacity .4s;
+    }
+    [data-estado="carregando"] #tela, [data-estado="erro"] #tela { opacity: 0; }
+    .contagem {
+      position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+      font: 900 min(42vh, 30vw)/1 var(--display); color: #fff; text-shadow: 0 12px 80px rgb(0 0 0 / .55);
+    }
+
+    /* ---------- controles ---------- */
+    .controles { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 32px; padding: 22px 32px 28px; }
+    [data-estado]:not([data-estado="ao-vivo"]) .controles { visibility: hidden; }
+    .dica { display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: 15px; }
+    .dica:last-child { justify-content: flex-end; }
+    .dica strong { color: var(--texto); font-weight: 600; }
+    kbd {
+      display: inline-block; min-width: 2.2em; padding: 6px 9px; text-align: center;
+      font: 600 13px/1 var(--ui); color: var(--texto);
+      border: 1px solid var(--linha); border-bottom-width: 3px; border-radius: 9px; background: rgb(255 255 255 / .08);
+    }
+    .disparo {
+      width: 88px; height: 88px; padding: 7px; border-radius: 50%;
+      border: 4px solid #fff; background: transparent;
+      box-shadow: 0 0 0 10px rgb(255 255 255 / .06), 0 0 60px -10px var(--cor-destaque);
+    }
+    .disparo::after {
+      content: ""; display: block; width: 100%; height: 100%; border-radius: 50%;
+      background: linear-gradient(135deg, #fff, color-mix(in oklab, var(--cor-destaque) 35%, #fff));
+      transition: transform .18s;
+    }
+    .disparo:hover::after { transform: scale(.9); }
+    .disparo:active::after { transform: scale(.8); }
+
+    .flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+
+    /* ---------- painéis sobrepostos ---------- */
+    .painel {
+      position: fixed; inset: 0; display: none; place-items: center; padding: 40px;
+      background: rgb(6 9 20 / .7); backdrop-filter: blur(28px) saturate(1.3);
+    }
+    [data-estado="revisao"] #revisao, [data-estado="enviado"] #enviado, [data-estado="erro"] #erro-painel { display: grid; }
+
+    .revisao { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(380px, 1fr); gap: 56px; align-items: center; width: min(1500px, 100%); }
+    #foto {
+      display: block; width: 100%; max-height: 82vh; object-fit: contain; border-radius: 22px;
+      box-shadow: 0 0 0 1px var(--linha), 0 50px 120px -30px rgb(0 0 0 / .9);
+      transform: rotate(-1.2deg); animation: revelar .8s cubic-bezier(.2, .9, .25, 1.15) both;
+    }
+    .cartao {
+      display: grid; gap: 14px; padding: 40px; border-radius: var(--raio);
+      border: 1px solid var(--linha); background: linear-gradient(180deg, rgb(255 255 255 / .09), rgb(255 255 255 / .035));
+      box-shadow: 0 40px 100px -40px rgb(0 0 0 / .9);
+      animation: subir .6s .15s cubic-bezier(.2, .8, .2, 1) both;
+    }
+    .titulo { font: 800 clamp(30px, 3.3vw, 48px)/1.05 var(--display); letter-spacing: -.02em; }
+    .titulo em { font-style: normal; color: var(--cor-destaque); }
+    .cartao label { margin-top: 10px; color: var(--suave); }
+    .campo {
+      display: flex; align-items: center; gap: 14px; padding: 0 20px; border-radius: 18px;
+      border: 2px solid var(--linha); background: rgb(0 0 0 / .35); transition: border-color .2s, box-shadow .2s;
+    }
+    .campo:focus-within { border-color: var(--cor-destaque); box-shadow: 0 0 0 6px color-mix(in oklab, var(--cor-destaque) 22%, transparent); }
+    .campo:has([aria-invalid="true"]) { border-color: var(--perigo); box-shadow: 0 0 0 6px color-mix(in oklab, var(--perigo) 18%, transparent); animation: tremer .35s; }
+    .campo span { color: var(--suave); font: 600 clamp(22px, 2vw, 30px)/1 var(--ui); }
+    #whatsapp {
+      flex: 1; width: 100%; min-width: 0; padding: 20px 0; border: 0; outline: 0; background: none; color: var(--texto);
+      font: 700 clamp(28px, 2.6vw, 42px)/1 var(--ui); font-variant-numeric: tabular-nums; letter-spacing: .01em;
+    }
+    #whatsapp::placeholder { color: rgb(255 255 255 / .22); }
+    .erro { min-height: 1.45em; color: var(--perigo); font-size: 15px; }
+    .botao {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 20px 24px; border-radius: 16px; border: 0; font-weight: 700; transition: transform .15s, filter .15s;
+    }
+    .botao:hover { filter: brightness(1.08); }
+    .botao:active { transform: scale(.98); }
+    .botao:disabled { opacity: .6; cursor: progress; }
+    .primario { background: var(--cor-destaque); color: var(--cor-texto-destaque); }
+    .primario kbd { color: inherit; border-color: rgb(0 0 0 / .18); background: rgb(0 0 0 / .08); }
+    .secundario { background: transparent; border: 1px solid var(--linha); }
+    .legal { margin-top: 4px; color: var(--suave); font-size: 13px; }
+
+    .final { display: grid; justify-items: center; gap: 18px; max-width: 760px; text-align: center; }
+    .final p { color: var(--suave); font-size: clamp(18px, 1.6vw, 24px); }
+    .selo { width: 120px; height: 120px; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .selo circle { stroke: var(--ok); fill: color-mix(in oklab, var(--ok) 14%, transparent); }
+    .selo path { stroke: var(--ok); stroke-dasharray: 40; animation: tracar .6s .2s ease-out both; }
+    .barra { width: 240px; height: 6px; margin-top: 14px; border-radius: 99px; background: var(--vidro); overflow: hidden; }
+    .barra span { display: block; height: 100%; background: var(--cor-destaque); transform-origin: left; animation: esvaziar 6s linear both; }
+    #erro-painel .cartao { max-width: 560px; text-align: center; justify-items: center; }
+    #erro-painel p { color: var(--suave); }
+
+    @keyframes pulsar { 50% { opacity: .35; } }
+    @keyframes revelar { from { opacity: 0; transform: translateY(50px) rotate(-6deg) scale(.9); } }
+    @keyframes subir { from { opacity: 0; transform: translateY(24px); } }
+    @keyframes tremer { 25% { translate: -8px; } 50% { translate: 6px; } 75% { translate: -3px; } }
+    @keyframes tracar { from { stroke-dashoffset: 40; } }
+    @keyframes esvaziar { to { transform: scaleX(0); } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+    @media (max-width: 1000px) {
+      .revisao { grid-template-columns: 1fr; gap: 28px; }
+      #foto { max-height: 40vh; }
+      .painel { overflow-y: auto; padding: 20px; }
+      .dica { display: none; }
+      .controles { grid-template-columns: 1fr; justify-items: center; }
+    }
+  </style>
+</head>
+<body data-estado="carregando">
+  <header class="topo">
+    <div class="marca">Cabine Mágica <span>SENAI Fraiburgo</span></div>
+    <div class="chip" id="camera" aria-live="polite">Conectando câmera…</div>
+  </header>
+
+  <main class="palco">
+    <canvas id="tela" role="img" aria-label="Prévia ao vivo da câmera com a moldura do evento"></canvas>
+    <div class="contagem" id="contagem" aria-live="assertive"></div>
+  </main>
+
+  <footer class="controles">
+    <p class="dica"><kbd>Enter</kbd> <strong>Tirar foto</strong></p>
+    <button class="disparo" id="disparo" aria-label="Tirar foto"></button>
+    <p class="dica"><kbd>C</kbd> Trocar câmera <kbd>F</kbd> Tela cheia</p>
+  </footer>
+
+  <div class="flash" id="flash"></div>
+
+  <section class="painel" id="revisao" aria-labelledby="revisao-titulo">
+    <div class="revisao">
+      <img id="foto" alt="Sua foto com a moldura do evento">
+      <form class="cartao" id="form" novalidate>
+        <h1 class="titulo" id="revisao-titulo">Ficou <em>incrível!</em></h1>
+        <label for="whatsapp">Digite seu WhatsApp para receber a foto</label>
+        <div class="campo">
+          <span aria-hidden="true">+55</span>
+          <input id="whatsapp" inputmode="numeric" autocomplete="off" placeholder="(49) 99999-9999" aria-describedby="erro legal">
+        </div>
+        <p class="erro" id="erro" role="alert"></p>
+        <button class="botao primario" id="enviar" type="submit"><span>Pular e concluir</span><kbd>Enter</kbd></button>
+        <button class="botao secundario" id="refazer" type="button"><span>Tirar outra foto</span><kbd>Esc</kbd></button>
+        <p class="legal" id="legal">Usamos seu número apenas para enviar esta foto.</p>
+      </form>
+    </div>
+  </section>
+
+  <section class="painel" id="enviado" aria-live="polite">
+    <div class="final">
+      <svg class="selo" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-15"/></svg>
+      <h2 class="titulo" id="final-titulo"></h2>
+      <p id="final-msg"></p>
+      <div class="barra" aria-hidden="true"><span></span></div>
+    </div>
+  </section>
+
+  <section class="painel" id="erro-painel" role="alert">
+    <div class="cartao">
+      <h2 class="titulo">Ops! A câmera precisa de atenção</h2>
+      <p id="erro-msg"></p>
+      <button class="botao primario" id="tentar" onclick="location.reload()"><span>Tentar novamente</span><kbd>Enter</kbd></button>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

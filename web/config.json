@@ -1,0 +1,14 @@
+{
+  "titulo": "MUNDO SENAI 2026",
+  "subtitulo": "FRAIBURGO",
+  "hashtag": "#EU_FUI!",
+  "cor_inicio": "#0A2A6B",
+  "cor_fim": "#1A6BFF",
+  "cor_destaque": "#FFC21A",
+  "cor_texto_destaque": "#0A1A3F",
+  "moldura_png": "",
+  "espelhar": true,
+  "contagem": 3,
+  "resolucao": [1920, 1080],
+  "qualidade_jpeg": 0.92
+}
