@@ -44,13 +44,22 @@ Edite `web/config.json` e recarregue a página:
 
 | Chave | Exemplo | O que faz |
 |---|---|---|
-| `titulo`, `subtitulo`, `hashtag` | `"MUNDO SENAI 2026"` | Textos da faixa (encolhem sozinhos se não couberem) |
-| `cor_inicio`, `cor_fim` | `"#0A2A6B"` | Degradê da moldura (também colorem a interface) |
-| `cor_destaque`, `cor_texto_destaque` | `"#FFC21A"` | Selo da hashtag e botões |
+| `titulo`, `unidade`, `hashtag` | `"MUNDO SENAI 2026"` | Textos da moldura (encolhem sozinhos se não couberem) |
+| `cor_primaria` | `"#164193"` | Azul SENAI: barra lateral e faixa da moldura, fundo da interface |
+| `cor_destaque` | `"#E84910"` | Laranja SENAI: topo da barra, bandeira da hashtag, botões |
+| `logo` | `"logo-senai-branco.png"` | Assinatura usada na faixa (versão branca, sem margem) |
 | `moldura_png` | `"moldura.png"` | Arte pronta (PNG transparente, mesma proporção da câmera, ex. 1920×1080) colocada em `web/`; substitui a moldura desenhada |
 | `espelhar` | `true` | Prévia e foto espelhadas (efeito selfie) |
 | `contagem` | `3` | Segundos da contagem regressiva |
 | `resolucao` | `[1920, 1080]` | Resolução pedida à câmera |
+
+### Identidade visual
+
+Segue o modelo oficial SENAI 2026 (`ref/`): azul `#164193`, laranja `#E84910`, Century Gothic,
+assinatura branca sobre azul com divisor, e a barra lateral com corte diagonal (~36°), cujas
+proporções são reproduzidas na moldura e na borda da tela. A Century Gothic é usada quando está
+instalada (vem com o Microsoft Office); sem ela entra a TeX Gyre Adventor (`web/fontes/`, licença
+GUST, clone livre), então a cabine não depende de internet.
 
 ## Fotos e integrações (WhatsApp, e-mail)
 

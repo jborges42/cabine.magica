@@ -10,7 +10,7 @@ const video = Object.assign(document.createElement("video"), { muted: true, play
 const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]); // teclado, teclado numérico e passador de slides
 const CELULAR = /^[1-9]{2}9\d{8}$/; // DDD + 9 + 8 dígitos (mesma regra do cabine.py)
-const FONTE = "Unbounded, system-ui, sans-serif";
+const FONTE = '"Marca", "Century Gothic", sans-serif'; // Century Gothic da identidade SENAI (ver @font-face)
 const MENSAGENS = {
   NotAllowedError: "O navegador bloqueou a câmera. Libere o acesso no ícone ao lado do endereço e tente de novo.",
   NotFoundError: "Nenhuma câmera encontrada. Conecte uma webcam USB.",
@@ -19,7 +19,7 @@ const MENSAGENS = {
 };
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
-let cfg, moldura, camada, stream, estado, upload, timer;
+let cfg, logo, moldura, camada, stream, estado, upload, timer;
 let cameras = [];
 let revisaoDesde = 0;
 
@@ -33,13 +33,9 @@ async function iniciar() {
   for (const chave in cfg) {
     if (chave.startsWith("cor_")) document.documentElement.style.setProperty(`--${chave.replaceAll("_", "-")}`, cfg[chave]);
   }
-  if (cfg.moldura_png) {
-    const img = new Image();
-    img.src = cfg.moldura_png;
-    moldura = await img.decode().then(() => img, () => console.warn("moldura_png não carregou; usando a moldura desenhada"));
-  }
-  // Fonte da moldura: espera no máximo 2 s (sem internet, segue com a do sistema).
-  await Promise.race([document.fonts.load(`900 10px ${FONTE}`), document.fonts.load(`600 10px ${FONTE}`), espera(2000)]);
+  logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
+  if (cfg.moldura_png) moldura = await imagem(cfg.moldura_png).catch(() => console.warn("moldura_png não carregou; usando a moldura desenhada"));
+  await Promise.race([document.fonts.load(`700 10px ${FONTE}`), document.fonts.load(`400 10px ${FONTE}`), espera(2000)]);
   document.fonts.onloadingdone = () => (camada = null);
   await abrirCamera(localStorage.getItem("camera"));
   requestAnimationFrame(quadro);
@@ -110,64 +106,72 @@ function criarCamada(L, A) {
   return c;
 }
 
+// Proporções da barra lateral oficial (ref/barra_lateral.png), em múltiplos da largura da barra:
+// laranja até 2,51 (esq.) / 1,78 (dir.), vão, azul a partir de 3,79 / 3,06 → corte diagonal de ~36°.
+const BARRA = { laranja: [2.51, 1.78], azul: [3.79, 3.06], canto: 0.18, inclinacao: 0.73 };
+
 function desenharMoldura(g, L, A) {
   const u = Math.min(L, A) / 100; // tudo proporcional: funciona em 720p, 1080p, 4K ou retrato
-  const borda = 2.4 * u, faixa = 17 * u, raio = 3.2 * u;
-  const janela = [borda, borda, L - 2 * borda, A - borda - faixa, raio];
+  const barra = 4.6 * u, faixa = 15 * u, curva = 3 * u, respiro = 3.2 * u;
+  const base = A - faixa; // topo da faixa azul
 
-  // Faixa colorida com a janela da foto vazada
-  const fundo = g.createLinearGradient(0, 0, L, A);
-  fundo.addColorStop(0, cfg.cor_inicio);
-  fundo.addColorStop(1, cfg.cor_fim);
-  g.fillStyle = fundo;
-  g.beginPath();
-  g.rect(0, 0, L, A);
-  g.roundRect(...janela);
-  g.fill("evenodd");
-  g.strokeStyle = "rgb(255 255 255 / .35)";
-  g.lineWidth = 0.3 * u;
-  g.beginPath();
-  g.roundRect(...janela);
-  g.stroke();
-
-  const meio = A - faixa / 2;
-  const margem = 2 * borda;
-
-  // Selo da hashtag, levemente inclinado
-  const larguraHashtag = ajustar(g, cfg.hashtag, 900, 5.6 * u, L * 0.4);
-  const sl = larguraHashtag + 6 * u, sa = 10 * u;
-  const sx = L - margem - sl / 2;
-  g.save();
-  g.translate(sx, meio);
-  g.rotate(-4 * Math.PI / 180);
-  g.shadowColor = "rgb(0 0 0 / .35)";
-  g.shadowBlur = 2.4 * u;
-  g.shadowOffsetY = 0.8 * u;
+  // Barra lateral SENAI: bloco laranja, vão diagonal (a foto aparece) e azul que desce e vira a faixa.
   g.fillStyle = cfg.cor_destaque;
   g.beginPath();
-  g.roundRect(-sl / 2, -sa / 2, sl, sa, 2.6 * u);
+  g.moveTo(0, 0);
+  g.arcTo(barra, 0, barra, barra, BARRA.canto * barra);
+  g.lineTo(barra, BARRA.laranja[1] * barra);
+  g.lineTo(0, BARRA.laranja[0] * barra);
   g.fill();
-  g.shadowColor = "transparent";
-  g.fillStyle = cfg.cor_texto_destaque;
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(cfg.hashtag, 0, 0.3 * u);
-  g.restore();
-  g.fillStyle = "#fff";
-  brilho(g, sx - sl / 2 - 0.8 * u, meio - sa / 2 - 0.6 * u, 1.8 * u);
-  brilho(g, sx + sl / 2 + 0.4 * u, meio + sa / 2 + 0.2 * u, 1.1 * u);
+  g.fillStyle = cfg.cor_primaria;
+  g.beginPath();
+  g.moveTo(0, BARRA.azul[0] * barra);
+  g.lineTo(barra, BARRA.azul[1] * barra);
+  g.arcTo(barra, base, barra + curva, base, curva);
+  g.lineTo(L, base);
+  g.lineTo(L, A);
+  g.lineTo(0, A);
+  g.fill();
 
-  // Título e subtítulo à esquerda
-  const livre = sx - sl / 2 - 4 * u - margem;
-  g.textAlign = "left";
-  g.textBaseline = "alphabetic";
+  // Bandeira da hashtag: laranja, apoiada na faixa, com o mesmo corte diagonal da barra.
+  const alturaBandeira = 8.4 * u;
+  const larguraHashtag = ajustar(g, cfg.hashtag, 700, 4.6 * u, L * 0.35);
+  const corte = alturaBandeira / BARRA.inclinacao;
+  const inicioTexto = L - respiro - larguraHashtag;
+  const xBandeira = inicioTexto - respiro - corte / 2;
+  g.fillStyle = cfg.cor_destaque;
+  g.beginPath();
+  g.moveTo(xBandeira, base);
+  g.lineTo(xBandeira + corte, base - alturaBandeira);
+  g.lineTo(L, base - alturaBandeira);
+  g.lineTo(L, base);
+  g.fill();
   g.fillStyle = "#fff";
-  ajustar(g, cfg.titulo, 900, 6.2 * u, livre);
-  g.fillText(cfg.titulo, margem, meio + 0.6 * u);
-  g.letterSpacing = `${0.9 * u}px`;
+  g.textAlign = "left";
+  g.textBaseline = "middle";
+  g.fillText(cfg.hashtag, inicioTexto, base - alturaBandeira / 2);
+
+  // Faixa: título + unidade à esquerda, divisor e assinatura SENAI à direita (como no modelo oficial).
+  const meio = base + faixa / 2;
+  const margem = barra + respiro;
+  let limite = L - respiro;
+  if (logo) {
+    const alturaLogo = 5.4 * u, larguraLogo = (alturaLogo * logo.width) / logo.height;
+    limite -= larguraLogo;
+    g.drawImage(logo, limite, meio - alturaLogo / 2, larguraLogo, alturaLogo);
+    limite -= respiro;
+    g.fillStyle = "rgb(255 255 255 / .45)";
+    g.fillRect(limite, meio - 3.4 * u, 0.18 * u, 6.8 * u);
+    limite -= respiro;
+  }
+  g.fillStyle = "#fff";
+  g.textBaseline = "alphabetic";
+  ajustar(g, cfg.titulo, 700, 5.2 * u, limite - margem);
+  g.fillText(cfg.titulo, margem, meio + 0.2 * u);
+  g.letterSpacing = `${0.55 * u}px`;
   g.fillStyle = "rgb(255 255 255 / .8)";
-  ajustar(g, cfg.subtitulo, 600, 2.6 * u, livre);
-  g.fillText(cfg.subtitulo, margem, meio + 5.4 * u);
+  ajustar(g, cfg.unidade, 400, 2.3 * u, limite - margem);
+  g.fillText(cfg.unidade, margem, meio + 4.3 * u);
   g.letterSpacing = "0px";
 }
 
@@ -179,15 +183,11 @@ function ajustar(g, texto, peso, tamanho, max) {
   return Math.min(largura, max);
 }
 
-// Estrela de quatro pontas ✦
-function brilho(g, x, y, r) {
-  g.beginPath();
-  g.moveTo(x, y - r);
-  g.quadraticCurveTo(x, y, x + r, y);
-  g.quadraticCurveTo(x, y, x, y + r);
-  g.quadraticCurveTo(x, y, x - r, y);
-  g.quadraticCurveTo(x, y, x, y - r);
-  g.fill();
+async function imagem(src) {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  return img;
 }
 
 // ---------- fluxo da foto ----------
@@ -242,7 +242,7 @@ function mascara(digitos) {
 }
 
 function atualizarFormulario() {
-  enviar.firstElementChild.textContent = campo.value ? "Enviar para meu WhatsApp" : "Pular e concluir";
+  enviar.firstElementChild.textContent = campo.value ? "Enviar foto" : "Pular e concluir";
   campo.removeAttribute("aria-invalid");
   $("#erro").textContent = "";
 }
