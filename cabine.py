@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import segno
 
+import celular
 import compartilhar
 import tratamento
 import whatsapp
@@ -134,6 +135,10 @@ def status_whatsapp(verificar=False):
             situacao["conta"] = whatsapp.conta(cfg)
         except whatsapp.ErroWhatsApp as erro:
             situacao["erro_conta"] = str(erro)
+    if cfg["provedor"] == "celular":
+        estado = celular.estado
+        qr = segno.make(estado["qr"], error="l").svg_inline(scale=6, border=2, dark="#061131", light="#ffffff") if estado["qr"] else None
+        situacao["celular"] = {**{k: v for k, v in estado.items() if k != "qr"}, "qr": qr}
     return {**situacao, "pausa": whatsapp.estado["pausa"], **whatsapp.resumo(FILA)}
 
 
@@ -183,6 +188,12 @@ class Cabine(SimpleHTTPRequestHandler):
                     self.responder(200, whatsapp.testar(destino, FOTOS))
                 except whatsapp.ErroWhatsApp as erro:
                     self.responder(502, {"erro": str(erro)})
+            elif url.path == "/api/whatsapp/celular/conectar":
+                celular.iniciar()
+                self.responder(200, status_whatsapp())
+            elif url.path == "/api/whatsapp/celular/desconectar":
+                celular.desconectar()
+                self.responder(200, status_whatsapp())
             elif url.path == "/api/whatsapp/reenviar":
                 whatsapp.reenviar_erros(FILA)
                 self.responder(200, status_whatsapp())
@@ -245,6 +256,8 @@ if __name__ == "__main__":
     # Só 127.0.0.1: a cabine não fica exposta na rede do evento.
     servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), partial(Cabine, directory=WEB))
     whatsapp.iniciar(FILA, FOTOS)
+    if whatsapp.carregar()["provedor"] == "celular" and celular.SESSAO.exists():
+        celular.iniciar()  # reconecta com a sessão salva, sem novo QR
     compartilhar.iniciar(FOTOS)
     url = f"http://127.0.0.1:{PORTA}"
     print(f"Cabine Mágica no ar em {url}  (Ctrl+C para encerrar; registros em cabine.log)")
