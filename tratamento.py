@@ -25,7 +25,7 @@ def rostos(img):
     return [tuple(int(v / escala) for v in caixa[:4]) for caixa in (caixas if caixas is not None else [])]
 
 
-def balanco_branco(img, forca=0.6, limite=14):
+def balanco_branco(img, forca=0.5, limite=14):
     """Mundo cinza em LAB, parcial e limitado: tira dominantes de luz sem "lavar" cenários coloridos."""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     meio = (lab[..., 0] > 30) & (lab[..., 0] < 230)  # ignora sombras profundas e luzes estouradas
@@ -75,11 +75,13 @@ def ruido(img):
     return cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
 
 
-def nitidez(img, quantidade=0.35):
-    """Máscara de nitidez na luminância (sem halos coloridos), raio proporcional à resolução."""
+def nitidez(img, quantidade=0.35, limiar=3):
+    """Máscara de nitidez na luminância, com limiar: realça bordas, não o granulado."""
     ycc = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
-    borrada = cv2.GaussianBlur(ycc[..., 0], (0, 0), max(0.8, img.shape[1] / 1920))
-    ycc[..., 0] = cv2.addWeighted(ycc[..., 0], 1 + quantidade, borrada, -quantidade, 0)
+    luz = ycc[..., 0]
+    detalhe = (luz.astype(np.int16) - cv2.GaussianBlur(luz, (0, 0), max(0.8, img.shape[1] / 1920))).astype(np.float32)
+    detalhe[np.abs(detalhe) < limiar] = 0
+    ycc[..., 0] = np.clip(luz + quantidade * detalhe, 0, 255).astype(np.uint8)
     return cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
 
 

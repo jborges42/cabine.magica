@@ -111,6 +111,16 @@ nunca mudam.
 A exposição é calculada pela cena, não pelo rosto, para não "clarear" tons de pele.
 Para comparar os presets numa foto: `python tratamento.py foto.jpg`.
 
+**Por que não há preset de IA.** Testamos modelos open source de realce de luz (SCI,
+Zero‑DCE++, IAT): todos pioraram fotos bem iluminadas (estouraram, lavaram ou escureceram).
+Os modelos bons de cor e de rosto (Deep WB, Exposure Correction, CodeFormer, MIRNet) têm
+licença **não comercial**, inadequada para uso institucional. O caminho de IA que vale para o
+futuro é o *Image‑Adaptive 3D LUT* (Apache‑2.0), treinado com fotos da cabine editadas por um
+fotógrafo do SENAI.
+
+**O maior ganho de qualidade não é software:** luz contínua de 5600 K na frente das pessoas e,
+se a webcam permitir, balanço de branco e exposição travados no software dela (Logi Tune etc.).
+
 ## Personalizar (`web/config.json`)
 
 | Chave | Exemplo | O que faz |
