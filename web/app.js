@@ -12,7 +12,14 @@ const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]); // teclado, teclado numérico e passador de slides
 const CELULAR = /^[1-9]{2}9\d{8}$/; // DDD + 9 + 8 dígitos (mesma regra do cabine.py)
 const FONTE = '"Marca", "Century Gothic", sans-serif'; // Century Gothic da identidade SENAI (ver @font-face)
-const PADRAO = { titulo: "", unidade: "", hashtag: "", espelhar_previa: true, espelhar_foto: false, contagem: 3, resolucao: "max", fps: 30, preset: "natural" };
+const PADRAO = { titulo: "", unidade: "", hashtag: "", espelhar_previa: true, espelhar_foto: true, contagem: 3, resolucao: "max", fps: 30, preset: "natural", formato: "feed" };
+// Formatos da foto (teclas 1–4 na tela ao vivo): recorte central do vídeo na proporção escolhida.
+const FORMATOS = [
+  { id: "story", nome: "Story", proporcao: 9 / 16, rotulo: "9:16" },
+  { id: "feed", nome: "Feed", proporcao: 4 / 5, rotulo: "4:5" },
+  { id: "quadrado", nome: "Quadrado", proporcao: 1, rotulo: "1:1" },
+  { id: "grande", nome: "Grande", proporcao: null, rotulo: "inteira" },
+];
 const MENSAGENS = {
   NotAllowedError: "O navegador bloqueou a câmera. Libere o acesso no ícone ao lado do endereço e tente de novo.",
   NotFoundError: "Nenhuma câmera encontrada. Conecte uma webcam USB.",
@@ -22,7 +29,7 @@ const MENSAGENS = {
 };
 const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
-let cfg, logo, moldura, stream, estado, upload, timer, presetAtual;
+let cfg, logo, moldura, stream, estado, upload, timer, presetAtual, formato;
 let cameras = [];
 let presets = [];
 let tratando = Promise.resolve();
@@ -47,6 +54,7 @@ async function iniciar() {
   }
   $(".sobretitulo").textContent = [cfg.titulo, cfg.hashtag].filter(Boolean).join(" · ");
   presets = await (await fetch("api/presets")).json();
+  formato = FORMATOS.find((f) => f.id === cfg.formato) ?? FORMATOS[0];
   logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
   if (cfg.moldura_png) moldura = await imagem(cfg.moldura_png).catch(() => console.warn("moldura_png não carregou; usando a moldura desenhada"));
   await Promise.race([document.fonts.load(`700 10px ${FONTE}`), document.fonts.load(`400 10px ${FONTE}`), espera(2000)]);
@@ -89,10 +97,29 @@ async function abrirCamera(id) {
     if (estado === "ao-vivo" || estado === "contagem") falha(MENSAGENS.Desconectada);
   };
   cameras = await listarCameras();
-  $("#camera").textContent = `${trilha.label || "Câmera"} · ${video.videoWidth}×${video.videoHeight}`;
-  const [, , l, a] = regiao();
-  enviarMoldura(Math.round(l), Math.round(a)).catch(() => {}); // adianta o upload da moldura
+  marcarFormato();
   mudar("ao-vivo");
+}
+
+function escolherFormato(novo) {
+  formato = novo;
+  marcarFormato();
+}
+
+function marcarFormato() {
+  const [, , l, a] = regiao().map(Math.round);
+  const trilha = stream?.getVideoTracks()[0];
+  $("#camera").textContent = `${trilha?.label || "Câmera"} · ${formato.nome} · ${l}×${a}`;
+  $("#formatos").replaceChildren(
+    ...FORMATOS.map((f, i) => {
+      const botao = Object.assign(document.createElement("button"), { type: "button", disabled: Boolean(moldura) });
+      botao.innerHTML = `<kbd>${i + 1}</kbd> ${f.nome} <small>${f.rotulo}</small>`;
+      botao.setAttribute("aria-pressed", f === formato);
+      botao.onclick = () => escolherFormato(f);
+      return botao;
+    }),
+  );
+  if (l) enviarMoldura(l, a).catch(() => {}); // adianta o upload da moldura deste tamanho
 }
 
 const listarCameras = async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
@@ -123,11 +150,11 @@ function manterTelaAcesa() {
 
 // ---------- desenho: vídeo + moldura ----------
 
-// Parte do vídeo que vira foto: o quadro inteiro, ou o centro na proporção da moldura_png.
+// Parte do vídeo que vira foto: o centro na proporção do formato (ou da moldura_png, se houver).
 function regiao() {
   const { videoWidth: vl, videoHeight: va } = video;
-  if (!moldura) return [0, 0, vl, va];
-  const proporcao = moldura.naturalWidth / moldura.naturalHeight;
+  const proporcao = moldura ? moldura.naturalWidth / moldura.naturalHeight : formato?.proporcao;
+  if (!proporcao) return [0, 0, vl, va];
   const l = Math.min(vl, va * proporcao);
   return [(vl - l) / 2, (va - l / proporcao) / 2, l, l / proporcao];
 }
@@ -143,7 +170,7 @@ function desenharVideo(g, L, A, espelhar) {
 function quadro() {
   if ((estado === "ao-vivo" || estado === "contagem") && video.videoWidth) {
     const [, , l, a] = regiao();
-    const escala = Math.min(1, (screen.width * devicePixelRatio) / l);
+    const escala = Math.min(1, (screen.width * devicePixelRatio) / l, (screen.height * devicePixelRatio) / a);
     const L = Math.round(l * escala), A = Math.round(a * escala);
     if (tela.width !== L || tela.height !== A) [tela.width, tela.height] = [L, A];
     desenharVideo(ctx, L, A, cfg.espelhar_previa); // prévia tipo espelho, como o celular
@@ -456,7 +483,8 @@ addEventListener("keydown", (evento) => {
     if (DISPARO.has(evento.key)) {
       evento.preventDefault();
       fotografar();
-    } else if (tecla === "c") trocarCamera();
+    } else if (/^[1-4]$/.test(evento.key) && !moldura) escolherFormato(FORMATOS[evento.key - 1]);
+    else if (tecla === "c") trocarCamera();
     else if (tecla === "f") telaCheia();
   } else if (estado === "revisao") {
     if (evento.key === "Escape") voltarAoVivo();

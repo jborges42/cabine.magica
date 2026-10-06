@@ -88,6 +88,15 @@
     [data-estado]:not([data-estado="ao-vivo"]) .controles { visibility: hidden; }
     .dica { display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: 15px; }
     .dica:last-child { justify-content: flex-end; }
+    .formatos { display: flex; flex-wrap: wrap; gap: 8px; }
+    .formatos button {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 8px; border-radius: 999px;
+      border: 1px solid var(--linha); background: var(--vidro); font-weight: 700; font-size: 15px; color: var(--suave);
+    }
+    .formatos button small { font-weight: 400; opacity: .75; }
+    .formatos button kbd { padding: 4px 7px; min-width: 0; }
+    .formatos button[aria-pressed="true"] { background: var(--cor-primaria); border-color: color-mix(in oklab, var(--cor-primaria) 60%, #fff); color: #fff; }
+    .formatos button:disabled { display: none; }
     .dica strong { color: var(--texto); }
     kbd {
       display: inline-block; min-width: 2.3em; padding: 6px 9px; text-align: center;
@@ -210,9 +219,9 @@
   </main>
 
   <footer class="controles">
-    <p class="dica"><kbd>Enter</kbd> <strong>Tirar foto</strong></p>
+    <div class="formatos" id="formatos" role="group" aria-label="Formato da foto"></div>
     <button class="disparo" id="disparo" aria-label="Tirar foto"></button>
-    <p class="dica"><kbd>C</kbd> Trocar câmera <kbd>F</kbd> Tela cheia</p>
+    <p class="dica"><kbd>Enter</kbd> <strong>Tirar foto</strong> <kbd>C</kbd> Câmera <kbd>F</kbd> Tela cheia</p>
   </footer>
 
   <div class="flash" id="flash"></div>
