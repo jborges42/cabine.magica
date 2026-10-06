@@ -125,10 +125,16 @@ def status_envio(foto_id):
     return {"status": pedido["status"], "erro": pedido.get("erro")}
 
 
+def svg_qr(texto, correcao):
+    """QR em SVG escalável (viewBox: encolhe sem cortar), preto no branco e com a margem de
+    4 módulos que a norma pede; sem isso os leitores (inclusive o do WhatsApp) falham."""
+    return segno.make(texto, error=correcao).svg_inline(border=4, dark="#000000", light="#ffffff", omitsize=True)
+
+
 def link_download(foto_id):
     """URL pública (túnel) e QR Code para o visitante baixar a foto no celular."""
     url = compartilhar.link(validar_id(foto_id))
-    qr = segno.make(url, error="m").svg_inline(scale=5, border=2, dark="#061131", light="#ffffff") if url else None
+    qr = svg_qr(url, "m") if url else None
     return {"url": url, "qr": qr, "erro": compartilhar.estado["erro"]}
 
 
@@ -143,7 +149,7 @@ def status_whatsapp(verificar=False):
             situacao["erro_conta"] = str(erro)
     if cfg["provedor"] == "celular":
         estado = celular.estado
-        qr = segno.make(estado["qr"], error="l").svg_inline(scale=6, border=2, dark="#061131", light="#ffffff") if estado["qr"] else None
+        qr = svg_qr(estado["qr"], "l") if estado["qr"] else None
         situacao["celular"] = {**{k: v for k, v in estado.items() if k != "qr"}, "qr": qr}
     return {**situacao, "pausa": whatsapp.estado["pausa"], **whatsapp.resumo(FILA)}
 

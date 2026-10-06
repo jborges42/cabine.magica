@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 (06/10/2026)
+
+- QR de pareamento do WhatsApp legível (SVG escalável, margem e preto no branco).
+- QR de download maior na revisão.
+
 ## 0.3.0 (06/10/2026)
 
 - Formatos Story, Feed, Quadrado e Grande, escolhidos antes da foto com prévia do recorte.
