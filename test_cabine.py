@@ -176,7 +176,8 @@ import celular  # noqa: E402
 enviados = []
 
 
-def envio_falso(destino, jpeg, nome):
+def envio_falso(destino, caminho, nome):
+    jpeg = caminho.read_bytes()
     if destino.endswith("0002"):
         raise celular.ErroCelular("este número não tem WhatsApp", repetir=False)
     if destino.endswith("0003"):

@@ -169,6 +169,11 @@ def _ler(caminho):
 def _gravar(caminho, pedido):
     temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
     temporario.write_text(json.dumps(pedido, ensure_ascii=False, indent=2), encoding="utf-8")
+    for tentativa in range(40):  # Windows: falha se a tela está lendo o pedido naquele instante
+        try:
+            return temporario.replace(caminho)
+        except PermissionError:
+            time.sleep(0.05)
     temporario.replace(caminho)
 
 
@@ -186,7 +191,7 @@ def processar(caminho, fotos, cfg):
         return True
     try:
         if cfg["provedor"] == "celular":
-            pedido["wamid"] = celular.enviar(pedido["destino"], (fotos / pedido["foto"]).read_bytes(), f"cabine-magica-{pedido['foto']}")
+            pedido["wamid"] = celular.enviar(pedido["destino"], fotos / pedido["foto"], f"cabine-magica-{pedido['foto']}")
         else:
             if not pedido.get("media_id") or pedido.get("media_em", "") < (datetime.now() - timedelta(days=29)).isoformat():
                 pedido["media_id"] = subir_foto(cfg, jpeg_para_envio((fotos / pedido["foto"]).read_bytes()))  # vale 30 dias
@@ -269,8 +274,11 @@ def testar(destino, fotos):
     cv2.putText(img, "Teste da Cabine Magica", (420, 560), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
     jpeg = cv2.imencode(".jpg", img)[1].tobytes()
     if cfg["provedor"] == "celular":
+        teste = fotos / ".teste-whatsapp.jpg"
+        teste.parent.mkdir(parents=True, exist_ok=True)
+        teste.write_bytes(jpeg)
         try:
-            return {"wamid": celular.enviar(destino, jpeg, "teste-cabine-magica.jpg"), "wa_id": None}
+            return {"wamid": celular.enviar(destino, teste, "teste-cabine-magica.jpg"), "wa_id": None}
         except celular.ErroCelular as erro:
             raise ErroWhatsApp("celular", str(erro)) from None
     wamid, wa_id = enviar_template(cfg, destino, subir_foto(cfg, jpeg_para_envio(jpeg)))

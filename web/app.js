@@ -55,6 +55,7 @@ async function iniciar() {
   }
   $(".sobretitulo").textContent = [cfg.titulo, cfg.hashtag].filter(Boolean).join(" · ");
   presets = await (await fetch("api/presets")).json();
+  if (!presets.some((p) => p.id === cfg.preset)) throw new Error(`web/config.json: preset "${cfg.preset}" não existe (use ${presets.map((p) => p.id).join(", ")})`);
   formato = FORMATOS.find((f) => f.id === cfg.formato) ?? FORMATOS[0];
   logo = await imagem(cfg.logo).catch(() => console.warn("logo não carregou"));
   if (cfg.moldura_png) moldura = await imagem(cfg.moldura_png).catch(() => console.warn("moldura_png não carregou; usando a moldura desenhada"));
@@ -398,6 +399,7 @@ async function postar(rota, corpo, tipo) {
 
 function abrirRevisao() {
   $("#baixar").hidden = true;
+  enviar.disabled = false;
   campo.value = "";
   atualizarFormulario();
   marcarPresets();
@@ -436,20 +438,21 @@ $("#form").addEventListener("submit", async (evento) => {
   if (performance.now() - marco < 800 || enviar.disabled) return; // Enter "colado" do disparo
   const digitos = campo.value.replace(/\D/g, "");
   if (digitos && !CELULAR.test(digitos)) return mostrarErro("Confira o número: DDD + celular com 9 dígitos.");
+  const minha = sessao; // o envio é deste visitante, mesmo que o próximo já esteja na tela
   enviar.disabled = true;
   try {
     const id = await upload.catch(() => null);
-    if (!id) return mostrarErro("Não conseguimos salvar a foto. Aperte Esc e tire outra.");
+    if (!id) return minha === sessao && mostrarErro("Não conseguimos salvar a foto. Aperte Esc e tire outra.");
     await tratando.catch(() => {}); // a foto enviada precisa estar no ajuste escolhido
     if (digitos) await postar("api/envios", JSON.stringify({ id, whatsapp: digitos }), "application/json");
-    if (estado !== "revisao") return; // a revisão expirou enquanto esperava
+    if (minha !== sessao || estado !== "revisao") return; // a revisão expirou enquanto esperava
     if (!digitos) return concluir("Valeu pela visita!", "Sua foto ficou guardada aqui na cabine.");
     concluir("Prontinho!", `Sua foto será enviada para o WhatsApp ${campo.value}.`);
     acompanharEnvio(id, campo.value);
   } catch {
-    mostrarErro("Não deu para registrar o envio. Tente de novo.");
+    if (minha === sessao) mostrarErro("Não deu para registrar o envio. Tente de novo.");
   } finally {
-    enviar.disabled = false;
+    if (minha === sessao) enviar.disabled = false;
   }
 });
 

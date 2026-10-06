@@ -10,6 +10,7 @@ import re
 import secrets
 import struct
 import sys
+import time
 import webbrowser
 from datetime import datetime
 from functools import partial
@@ -48,6 +49,11 @@ def gravar(caminho, dados):
     caminho.parent.mkdir(parents=True, exist_ok=True)
     temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
     temporario.write_bytes(dados)
+    for tentativa in range(40):  # Windows: falha se alguém está lendo o arquivo naquele instante
+        try:
+            return temporario.replace(caminho)
+        except PermissionError:
+            time.sleep(0.05)
     temporario.replace(caminho)
 
 
