@@ -31,17 +31,98 @@ FOTOS = RAIZ / "fotos"  # finais (tratadas + moldura): são as enviadas
 ORIGINAIS = FOTOS / "originais"  # como saíram da câmera, para trocar o ajuste
 MOLDURAS = RAIZ / "molduras"  # camada PNG da moldura por resolução, gerada pela interface
 FILA = RAIZ / "fila"
+EVENTO = RAIZ / "evento.json"
 PORTA = 8765
 MAX_CORPO = 60 * 1024 * 1024
 ID_FOTO = re.compile(r"\d{8}-\d{6}-[0-9a-f]{6}")
+PNG = b"\x89PNG\r\n\x1a\n"
+FORMATOS = ("story", "feed", "quadrado", "grande")
+RESOLUCOES = ("max", "3840x2160", "2560x1440", "1920x1080", "1280x720")
 log = logging.getLogger("cabine")
 
 
-def config():
+def _texto(valor):
+    return isinstance(valor, str) and len(valor) <= 60
+
+
+def _cor(valor):
+    return isinstance(valor, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", valor) is not None
+
+
+def _imagem(valor):
+    return valor == "" or isinstance(valor, str) and re.fullmatch(r"(evento/)?[\w-]+\.png", valor, re.ASCII) is not None and (WEB / valor).is_file()
+
+
+def _logico(valor):
+    return isinstance(valor, bool)
+
+
+def _opcao(opcoes):
+    return lambda valor: isinstance(valor, str) and valor in opcoes
+
+
+def _lista(opcoes):
+    return lambda valor: isinstance(valor, list) and len(valor) > 0 and all(isinstance(item, str) and item in opcoes for item in valor)
+
+
+def _inteiro(minimo, maximo):
+    return lambda valor: type(valor) is int and minimo <= valor <= maximo
+
+
+CAMPOS = {
+    "titulo": ("MUNDO SENAI 2026", _texto),
+    "unidade": ("SENAI FRAIBURGO", _texto),
+    "hashtag": ("#EU_FUI!", _texto),
+    "cor_primaria": ("#164193", _cor),
+    "cor_destaque": ("#E84910", _cor),
+    "logo": ("logo-senai-branco.png", _imagem),
+    "moldura_png": ("", _imagem),
+    "formatos": (list(FORMATOS), _lista(FORMATOS)),
+    "formato": ("feed", _opcao(FORMATOS)),
+    "presets": (list(tratamento.PRESETS), _lista(tratamento.PRESETS)),
+    "preset": ("natural", _opcao(tratamento.PRESETS)),
+    "whatsapp": (True, _logico),
+    "qr_download": (True, _logico),
+    "espelhar_previa": (True, _logico),
+    "espelhar_foto": (True, _logico),
+    "contagem": (3, _inteiro(0, 10)),
+    "resolucao": ("max", _opcao(RESOLUCOES)),
+    "fps": (30, _inteiro(10, 60)),
+    "qualidade_jpeg": (0.92, lambda valor: type(valor) in (int, float) and 0.5 <= valor <= 1),
+}
+
+
+def evento():
     try:
-        return json.loads((WEB / "config.json").read_text(encoding="utf-8"))
+        salvo = json.loads(EVENTO.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        salvo = {}
+    if not isinstance(salvo, dict):
+        salvo = {}
+    return {chave: salvo[chave] if chave in salvo and valido(salvo[chave]) else padrao for chave, (padrao, valido) in CAMPOS.items()}
+
+
+def salvar_evento(novos):
+    cfg = {**evento(), **{chave: valor for chave, valor in novos.items() if chave in CAMPOS}}
+    invalidos = [chave for chave, (_, valido) in CAMPOS.items() if not valido(cfg[chave])]
+    if invalidos:
+        raise ValueError(f"valor inválido em: {', '.join(invalidos)}")
+    if cfg["formato"] not in cfg["formatos"] or cfg["preset"] not in cfg["presets"]:
+        raise ValueError("o formato e o ajuste iniciais precisam estar habilitados")
+    gravar(EVENTO, json.dumps(cfg, ensure_ascii=False, indent=2).encode())
+    return cfg
+
+
+def salvar_imagem(campo, png):
+    if campo not in ("logo", "moldura_png"):
+        raise ValueError("campo de imagem inválido")
+    if png[:8] != PNG:
+        raise ValueError("a imagem precisa ser PNG")
+    if campo == "moldura_png" and not transparente(png):
+        raise ValueError("a moldura precisa ser PNG com transparência")
+    nome = f"evento/{campo.removesuffix('_png')}-{secrets.token_hex(4)}.png"
+    gravar(WEB / nome, png)
+    return nome
 
 
 def gravar(caminho, dados):
@@ -69,8 +150,12 @@ def normalizar_whatsapp(numero):
     return "55" + digitos if re.fullmatch(r"[1-9]{2}9[0-9]{8}", digitos) else None
 
 
+def transparente(png):
+    return png[:8] == PNG and len(png) > 25 and png[25] == 6
+
+
 def salvar_moldura(png):
-    if png[:8] != b"\x89PNG\r\n\x1a\n" or len(png) < 26 or png[25] != 6:
+    if not transparente(png):
         raise ValueError("a moldura precisa ser PNG com transparência")
     largura, altura = struct.unpack(">II", png[16:24])
     gravar(MOLDURAS / f"{largura}x{altura}.png", png)
@@ -78,12 +163,12 @@ def salvar_moldura(png):
 
 def tratar(foto_id, preset=None):
     """Original -> preset -> moldura -> fotos/<id>.jpg."""
-    cfg = config()
-    preset = preset or cfg.get("preset", "natural")
+    cfg = evento()
+    preset = preset or cfg["preset"]
     if preset not in tratamento.PRESETS:
         raise ValueError(f"ajuste desconhecido: {preset}")
     original = (ORIGINAIS / f"{validar_id(foto_id)}.jpg").read_bytes()
-    qualidade = round(float(cfg.get("qualidade_jpeg", 0.92)) * 100)
+    qualidade = round(cfg["qualidade_jpeg"] * 100)
     try:
         final = tratamento.processar(original, preset, MOLDURAS, qualidade)
     except Exception:  # o ajuste falhou: a pessoa ainda recebe a foto, só sem o ajuste
@@ -104,6 +189,8 @@ def salvar_foto(jpeg, preset=None):
 def enfileirar_envio(foto_id, whatsapp):
     """Cria fila/<id>.json com status 'pendente'; o whatsapp.py envia e atualiza o status."""
     validar_id(foto_id)
+    if not evento()["whatsapp"]:
+        raise ValueError("o envio por WhatsApp está desligado no painel do operador")
     destino = normalizar_whatsapp(whatsapp)
     if not destino:
         raise ValueError("número de WhatsApp inválido")
@@ -133,7 +220,8 @@ def svg_qr(texto, correcao):
 
 def link_download(foto_id):
     """URL pública (túnel) e QR Code para o visitante baixar a foto no celular."""
-    url = compartilhar.link(validar_id(foto_id))
+    validar_id(foto_id)
+    url = compartilhar.link(foto_id) if evento()["qr_download"] else None
     qr = svg_qr(url, "m") if url else None
     return {"url": url, "qr": qr, "erro": compartilhar.estado["erro"]}
 
@@ -159,6 +247,8 @@ class Cabine(SimpleHTTPRequestHandler):
         if not self.permitido():
             return
         rota = urlsplit(self.path).path
+        if rota == "/api/evento":
+            return self.responder(200, evento())
         if rota == "/api/presets":
             return self.responder(200, [{"id": chave, "nome": nome} for chave, (nome, _) in tratamento.PRESETS.items()])
         if achado := re.fullmatch(r"/api/envios/([\w-]+)", rota):
@@ -176,7 +266,12 @@ class Cabine(SimpleHTTPRequestHandler):
             return
         url = urlsplit(self.path)
         try:
-            if url.path == "/api/moldura":
+            if url.path == "/api/evento":
+                self.responder(200, salvar_evento(self.ler_json()))
+            elif url.path == "/api/evento/imagem":
+                campo = parse_qs(url.query).get("campo", [""])[0]
+                self.responder(201, {"caminho": salvar_imagem(campo, self.ler_corpo())})
+            elif url.path == "/api/moldura":
                 salvar_moldura(self.ler_corpo())
                 self.responder(201, {"ok": True})
             elif url.path == "/api/fotos":
