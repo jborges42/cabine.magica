@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 (06/10/2026)
+
+- Painel do operador com a aba Cabine e evento: nome do evento, unidade, hashtag, cores, arte própria da moldura, logo, formatos e ajustes habilitados, WhatsApp e QR de download liga/desliga, espelhamento, contagem, resolução, fps e qualidade, com prévia ao vivo da moldura.
+- A cabine aplica a configuração sozinha, sem interromper a revisão; `web/config.json` deu lugar a `evento.json`, validado no servidor.
+- Limites de envio por hora e por dia no modo celular, arquivo em qualidade total opcional e pausa automática na restrição 463.
+- Legenda do WhatsApp com o nome do evento configurado.
+- Código sem comentários, sem duplicações e sem parâmetros sem uso.
+
 ## 0.3.2 (06/10/2026)
 
 - O processo do WhatsApp encerra junto com a cabine e não fica órfão.
