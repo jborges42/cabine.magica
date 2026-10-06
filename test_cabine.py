@@ -81,5 +81,70 @@ assert pedir(f"/api/envios/{foto_id}")[1]["status"] == "pendente"
 
 assert "hashtag" in pedir("/config.json")[1]
 
+# ---------- WhatsApp: worker contra uma API falsa no formato da Cloud API ----------
+import whatsapp  # noqa: E402
+from http.server import BaseHTTPRequestHandler  # noqa: E402
+
+RESPOSTAS = {  # destino → (http, corpo)
+    "5549999990001": (200, {"messages": [{"id": "wamid.OK"}], "contacts": [{"wa_id": "5549999990001"}]}),
+    "5549999990002": (400, {"error": {"code": 131026, "message": "Message undeliverable"}}),
+    "5549999990003": (400, {"error": {"code": 131056, "message": "pair rate limit"}}),
+    "5549999990004": (401, {"error": {"code": 190, "message": "token expirado"}}),
+}
+recebidos = []
+
+
+class ApiFalsa(BaseHTTPRequestHandler):
+    def do_POST(self):
+        corpo = self.rfile.read(int(self.headers["Content-Length"]))
+        assert self.headers["D360-API-KEY"] == "CHAVE"
+        if self.path == "/media":
+            assert b"image/jpeg" in corpo and b"\xff\xd8" in corpo
+            status, dados = 200, {"id": "MEDIA1"}
+        else:
+            msg = json.loads(corpo)
+            recebidos.append(msg)
+            assert msg["template"]["components"][0]["parameters"][0]["image"]["id"] == "MEDIA1"
+            status, dados = RESPOSTAS[msg["to"]]
+        saida = json.dumps(dados).encode()
+        self.send_response(status)
+        self.send_header("Content-Length", str(len(saida)))
+        self.end_headers()
+        self.wfile.write(saida)
+
+    def log_message(self, *args):
+        pass
+
+
+api = ThreadingHTTPServer(("127.0.0.1", 0), ApiFalsa)
+threading.Thread(target=api.serve_forever, daemon=True).start()
+whatsapp.CONFIG = tmp / "whatsapp.json"
+assert pedir("/api/whatsapp")[1]["configurado"] is False
+assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[0] == 502  # sem configuração
+assert pedir("/api/whatsapp/config", b'{"provedor": "pombo-correio"}')[0] == 400
+whatsapp.salvar({"provedor": "360dialog", "token": "CHAVE", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": f"http://127.0.0.1:{api.server_port}"})
+status = pedir("/api/whatsapp")[1]
+assert status["configurado"] and status["token_salvo"] and "CHAVE" not in json.dumps(status), "token vazou para o navegador"
+
+cfg = whatsapp.carregar()
+for final in "1234":
+    caminho = cabine.FILA / f"teste-{final}.json"
+    caminho.write_text(json.dumps({**pedido, "destino": f"554999999000{final}"}), encoding="utf-8")
+    continuar = whatsapp.processar(caminho, cabine.FOTOS, cfg)
+    resultado = json.loads(caminho.read_text(encoding="utf-8"))
+    if final == "1":
+        assert resultado["status"] == "enviado" and resultado["wamid"] == "wamid.OK" and resultado["media_id"] == "MEDIA1"
+    if final == "2":
+        assert resultado["status"] == "erro" and "131026" in resultado["erro"]
+    if final == "3":
+        assert resultado["status"] == "pendente" and resultado["tentativas"] == 1 and resultado["proxima_tentativa"]
+    if final == "4":
+        assert not continuar and whatsapp.estado["pausa"] and resultado["status"] == "pendente", "token inválido deve pausar a fila"
+assert recebidos[0]["template"]["language"]["code"] == "pt_BR"
+assert pedir("/api/whatsapp")[1]["fila"]["erro"] == 1
+assert pedir("/api/whatsapp/reenviar", b"{}")[1]["fila"]["erro"] == 0
+assert whatsapp.estado["pausa"] is None
+api.shutdown()
+
 servidor.shutdown()
 print("ok")
