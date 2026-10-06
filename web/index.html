@@ -114,7 +114,7 @@
     }
     [data-estado="revisao"] #revisao, [data-estado="enviado"] #enviado, [data-estado="erro"] #erro-painel { display: grid; }
 
-    .revisao { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(380px, 1fr); gap: 56px; align-items: center; width: min(1500px, 100%); }
+    .revisao { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(400px, 1fr); gap: 56px; align-items: center; width: min(1500px, 100%); }
     #foto {
       display: block; width: 100%; max-height: 82vh; object-fit: contain; border-radius: 18px;
       box-shadow: 0 0 0 1px var(--linha), 0 50px 120px -30px rgb(0 0 0 / .9);
@@ -136,10 +136,10 @@
     }
     .campo:focus-within { border-color: var(--cor-destaque); box-shadow: 0 0 0 6px color-mix(in oklab, var(--cor-destaque) 24%, transparent); }
     .campo:has([aria-invalid="true"]) { border-color: var(--perigo); box-shadow: 0 0 0 6px color-mix(in oklab, var(--perigo) 18%, transparent); animation: tremer .35s; }
-    .campo span { color: var(--suave); font: 700 clamp(22px, 2vw, 30px)/1 var(--fonte); }
+    .campo span { color: var(--suave); font: 700 clamp(20px, 1.7vw, 28px)/1 var(--fonte); }
     #whatsapp {
       flex: 1; width: 100%; min-width: 0; padding: 20px 0; border: 0; outline: 0; background: none; color: var(--texto);
-      font: 700 clamp(28px, 2.6vw, 42px)/1 var(--fonte); font-variant-numeric: tabular-nums;
+      font: 700 clamp(24px, 2.1vw, 40px)/1 var(--fonte); font-variant-numeric: tabular-nums;
     }
     #whatsapp::placeholder { color: rgb(255 255 255 / .22); }
     .erro { min-height: 1.45em; color: var(--perigo); font-size: 15px; }
@@ -174,7 +174,7 @@
     @keyframes esvaziar { to { transform: scaleX(0); } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
-    @media (max-width: 1000px) {
+    @media (max-width: 1000px), (orientation: portrait) {
       .revisao { grid-template-columns: 1fr; gap: 28px; }
       #foto { max-height: 40vh; }
       .painel { overflow-y: auto; padding: 20px 20px 20px 46px; }
