@@ -1,26 +1,30 @@
-"""Auto-teste do servidor: python test_cabine.py"""
 import json
+import shutil
 import tempfile
 import threading
 import urllib.error
 import urllib.request
 from functools import partial
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 import cabine
+import celular
+import compartilhar
+import whatsapp
 
 assert cabine.normalizar_whatsapp("(49) 99999-1234") == "5549999991234"
-assert cabine.normalizar_whatsapp("4999991234") is None  # sem o 9
-assert cabine.normalizar_whatsapp("(09) 99999-1234") is None  # DDD inválido
-assert cabine.normalizar_whatsapp("٤٩٩٩٩٩٩١٢٣٤") is None  # dígitos não ASCII
+assert cabine.normalizar_whatsapp("4999991234") is None
+assert cabine.normalizar_whatsapp("(09) 99999-1234") is None
+assert cabine.normalizar_whatsapp("٤٩٩٩٩٩٩١٢٣٤") is None
 assert cabine.normalizar_whatsapp(None) is None
 
 tmp = Path(tempfile.mkdtemp())
 cabine.FOTOS, cabine.ORIGINAIS, cabine.MOLDURAS, cabine.FILA = tmp / "fotos", tmp / "fotos/originais", tmp / "molduras", tmp / "fila"
+cabine.EVENTO, cabine.WEB = tmp / "evento.json", shutil.copytree(cabine.WEB, tmp / "web", ignore=shutil.ignore_patterns("evento"))
 servidor = ThreadingHTTPServer(("127.0.0.1", 0), partial(cabine.Cabine, directory=cabine.WEB))
 threading.Thread(target=servidor.serve_forever, daemon=True).start()
 base = f"http://127.0.0.1:{servidor.server_port}"
@@ -36,13 +40,12 @@ def pedir(rota, corpo=None, tipo="application/json", **cabecalhos):
         return e.code, json.load(e)
 
 
-cena = np.full((48, 64, 3), (40, 60, 120), np.uint8)  # escura e quente
+cena = np.full((48, 64, 3), (40, 60, 120), np.uint8)
 jpeg = cv2.imencode(".jpg", cena)[1].tobytes()
 moldura = np.zeros((48, 64, 4), np.uint8)
-moldura[40:] = (255, 0, 0, 255)  # faixa azul opaca embaixo
+moldura[40:] = (255, 0, 0, 255)
 png = cv2.imencode(".png", moldura)[1].tobytes()
 
-# Só a própria cabine pode chamar a API
 assert pedir("/api/fotos", jpeg, "image/jpeg", Origin="https://site-qualquer.com")[0] == 403
 assert pedir("/api/presets", Host="cabine.atacante.com")[0] == 403
 
@@ -79,13 +82,31 @@ pedido = json.loads((cabine.FILA / f"{foto_id}.json").read_text(encoding="utf-8"
 assert pedido["destino"] == "5549999991234" and pedido["status"] == "pendente" and pedido["foto"] == f"{foto_id}.jpg"
 assert pedir(f"/api/envios/{foto_id}")[1]["status"] == "pendente"
 
-assert "hashtag" in pedir("/config.json")[1]
+cfg = pedir("/api/evento")[1]
+assert cfg["titulo"] == "MUNDO SENAI 2026" and cfg["formatos"] == list(cabine.FORMATOS) and cfg["whatsapp"] is True
+status, cfg = pedir("/api/evento", json.dumps({"titulo": "FEIRA 2027", "formatos": ["story", "feed"], "formato": "story", "presets": ["natural", "pb"], "contagem": 5}).encode())
+assert status == 200 and cfg["titulo"] == "FEIRA 2027" and cfg["unidade"] == "SENAI FRAIBURGO" and cfg["contagem"] == 5
+assert json.loads(cabine.EVENTO.read_text(encoding="utf-8"))["formato"] == "story"
+for ruim in ({"formatos": []}, {"formato": "grande"}, {"preset": "vivido"}, {"presets": ["natural", "neon"]}, {"cor_destaque": "laranja"},
+             {"contagem": "3"}, {"contagem": True}, {"resolucao": "8k"}, {"titulo": "x" * 61}, {"moldura_png": "../cabine.py"},
+             {"moldura_png": "evento/nao-existe.png"}, {"qualidade_jpeg": 2}, {"whatsapp": "sim"}):
+    assert pedir("/api/evento", json.dumps(ruim).encode())[0] == 400, ruim
+assert pedir("/api/evento", b'{"titulo": "outro"}', Origin="https://site-qualquer.com")[0] == 403
+assert pedir("/api/evento/imagem?campo=moldura_png", jpeg, "image/png")[0] == 400
+assert pedir("/api/evento/imagem?campo=../../x", png, "image/png")[0] == 400
+status, imagem = pedir("/api/evento/imagem?campo=moldura_png", png, "image/png")
+assert status == 201 and (cabine.WEB / imagem["caminho"]).read_bytes() == png
+assert pedir("/api/evento", json.dumps({"moldura_png": imagem["caminho"]}).encode())[1]["moldura_png"] == imagem["caminho"]
+cabine.EVENTO.write_text('{"titulo": 7, "contagem": 4}', encoding="utf-8")
+assert pedir("/api/evento")[1]["titulo"] == "MUNDO SENAI 2026" and pedir("/api/evento")[1]["contagem"] == 4, "valor salvo inválido volta ao padrão"
+assert pedir("/api/evento", b'{"whatsapp": false, "qr_download": false}')[0] == 200
+assert pedir("/api/envios", json.dumps({"id": foto_id, "whatsapp": "(49) 99999-1234"}).encode())[0] == 400, "WhatsApp desligado"
+assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
+cabine.EVENTO.unlink()
 
-# ---------- Download pelo celular: servidor público separado, links assinados ----------
-import compartilhar  # noqa: E402
 
 compartilhar.SEGREDO = tmp / "segredo.key"
-assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None  # sem túnel: sem QR
+assert pedir(f"/api/fotos/{foto_id}/link")[1]["url"] is None
 compartilhar.Publico.fotos = cabine.FOTOS
 publico = ThreadingHTTPServer(("127.0.0.1", 0), compartilhar.Publico)
 threading.Thread(target=publico.serve_forever, daemon=True).start()
@@ -106,11 +127,8 @@ for ruim in (f"/f/{foto_id}/AAAAAAAAAAAAAAAA", f"/f/{foto_id}", "/api/presets", 
 publico.shutdown()
 compartilhar.estado["url"] = None
 
-# ---------- WhatsApp: worker contra uma API falsa no formato da Cloud API ----------
-import whatsapp  # noqa: E402
-from http.server import BaseHTTPRequestHandler  # noqa: E402
 
-RESPOSTAS = {  # destino → (http, corpo)
+RESPOSTAS = {
     "5549999990001": (200, {"messages": [{"id": "wamid.OK"}], "contacts": [{"wa_id": "5549999990001"}]}),
     "5549999990002": (400, {"error": {"code": 131026, "message": "Message undeliverable"}}),
     "5549999990003": (400, {"error": {"code": 131056, "message": "pair rate limit"}}),
@@ -145,7 +163,7 @@ api = ThreadingHTTPServer(("127.0.0.1", 0), ApiFalsa)
 threading.Thread(target=api.serve_forever, daemon=True).start()
 whatsapp.CONFIG = tmp / "whatsapp.json"
 assert pedir("/api/whatsapp")[1]["configurado"] is False
-assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[0] == 502  # sem configuração
+assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[0] == 502
 assert pedir("/api/whatsapp/config", b'{"provedor": "pombo-correio"}')[0] == 400
 whatsapp.salvar({"provedor": "360dialog", "token": "CHAVE", "template": "foto_cabine_magica", "idioma": "pt_BR", "api_base": f"http://127.0.0.1:{api.server_port}"})
 status = pedir("/api/whatsapp")[1]
@@ -171,13 +189,12 @@ assert pedir("/api/whatsapp/reenviar", b"{}")[1]["fila"]["erro"] == 0
 assert whatsapp.estado["pausa"] is None
 api.shutdown()
 
-# ---------- Modo celular (grátis): worker com o envio do celular simulado ----------
-import celular  # noqa: E402
 
 enviados = []
 
 
-def envio_falso(destino, caminho, nome):
+def envio_falso(destino, caminho, nome, evento, arquivo):
+    assert evento == "MUNDO SENAI 2026 · SENAI FRAIBURGO" and arquivo is True, (evento, arquivo)
     jpeg = caminho.read_bytes()
     if destino.endswith("0002"):
         raise celular.ErroCelular("este número não tem WhatsApp", repetir=False)
@@ -187,6 +204,7 @@ def envio_falso(destino, caminho, nome):
     return "MSGID"
 
 
+enviar_real = celular.enviar
 celular.enviar, celular.iniciar = envio_falso, lambda: None
 whatsapp.salvar({"provedor": "celular"})
 cfg = whatsapp.carregar()
@@ -205,6 +223,44 @@ assert enviados == [("5549999990001", len((cabine.FOTOS / pedido["foto"]).read_b
 assert json.loads((cabine.FILA / "celular-3.json").read_text(encoding="utf-8"))["tentativas"] == 1
 assert pedir("/api/whatsapp/teste", b'{"numero": "49999990001"}')[1]["wamid"] == "MSGID"
 assert pedir("/api/whatsapp/celular/desconectar", b"{}")[1]["celular"]["status"] == "desligado"
+
+status = pedir("/api/whatsapp/config", b'{"limite_hora": 1, "limite_dia": 3, "enviar_arquivo": false}')[1]
+assert status["provedor"] == "celular" and status["limite_hora"] == 1 and status["enviar_arquivo"] is False
+assert status["enviados"]["hora"] >= 1 and status["enviados"]["dia"] >= 1
+for ruim in (b'{"limite_hora": 0}', b'{"limite_dia": "muitos"}'):
+    assert pedir("/api/whatsapp/config", ruim)[0] == 400, ruim
+assert whatsapp.no_limite(whatsapp.carregar(), cabine.FILA), "uma foto enviada na última hora já atinge o limite de 1"
+whatsapp.salvar({"limite_hora": 100, "limite_dia": 100})
+assert not whatsapp.no_limite(whatsapp.carregar(), cabine.FILA)
+assert not whatsapp.no_limite({**whatsapp.carregar(), "provedor": "meta", "limite_hora": 1}, cabine.FILA), "limite vale só no modo celular"
+
+
+class FilaFalsa:
+    def __init__(self, resposta):
+        self.resposta, self.pedidos = resposta, []
+
+    def put(self, item):
+        _, job, pedido = item
+        self.pedidos.append(pedido)
+        celular._pendentes[job][1].append(self.resposta)
+        celular._pendentes[job][0].set()
+
+
+celular.INTERVALO = (0, 0)
+celular.estado.update(status="conectado", erro=None)
+celular._filas["pedidos"] = FilaFalsa(("ok", "3EB0463F9A"))
+assert enviar_real("5549999990001", tmp / "x.jpg", "x.jpg", "FEIRA 2027", False) == "3EB0463F9A"
+assert celular.estado["status"] == "conectado", "id de mensagem com 463 não é restrição"
+pedido_enviado = celular._filas["pedidos"].pedidos[0]
+assert "FEIRA 2027" in pedido_enviado["legenda"] and pedido_enviado["arquivo"] is False
+celular._filas["pedidos"] = FilaFalsa(("falhou", "server returned error 463"))
+try:
+    enviar_real("5549999990001", tmp / "x.jpg", "x.jpg")
+    raise AssertionError("o 463 deveria virar erro")
+except celular.ErroCelular as erro:
+    assert erro.repetir
+assert celular.estado["status"] == "bloqueado" and "463" in celular.estado["erro"]
+assert not whatsapp.configurado(whatsapp.carregar()), "bloqueado pausa a fila"
 
 servidor.shutdown()
 print("ok")

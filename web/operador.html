@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operador · Cabine Mágica</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+  <link rel="icon" href="data:,">
   <style>
     @font-face { font-family: "Marca"; font-weight: 400; src: local("Century Gothic"), local("CenturyGothic"), url("fontes/texgyreadventor-regular.otf"); }
     @font-face { font-family: "Marca"; font-weight: 700; src: local("Century Gothic Bold"), local("CenturyGothic-Bold"), url("fontes/texgyreadventor-bold.otf"); }
@@ -21,8 +21,41 @@
     header { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
     header img { height: 32px; }
     header h1 { padding-left: 18px; border-left: 1px solid var(--linha); font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--suave); }
-    header a { margin-left: auto; color: var(--suave); }
-    main { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 22px; max-width: 1400px; }
+    header > a { margin-left: auto; color: var(--suave); }
+    nav { display: flex; gap: 4px; padding: 4px; border-radius: 999px; border: 1px solid var(--linha); background: var(--vidro); }
+    nav a { padding: 8px 18px; border-radius: 999px; color: var(--suave); font-weight: 700; font-size: 14px; text-decoration: none; }
+    nav a[aria-current="page"] { background: var(--azul); color: #fff; }
+    .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 22px; max-width: 1400px; }
+    .cabine { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 500px); gap: 22px; max-width: 1400px; align-items: start; }
+    .coluna { display: grid; gap: 22px; }
+    .lateral { position: sticky; top: 20px; }
+    .pares { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; }
+    #previa { display: block; max-width: 100%; max-height: 58vh; margin: 0 auto; border-radius: 14px; box-shadow: 0 0 0 1px var(--linha), 0 30px 80px -30px #000; }
+    .opcoes { display: flex; flex-wrap: wrap; gap: 8px; }
+    .opcao { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--linha); color: var(--texto); cursor: pointer; }
+    .opcao:has(input:checked) { background: color-mix(in oklab, var(--azul) 75%, transparent); border-color: transparent; }
+    .chave { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 0; color: var(--texto); font-size: 15px; cursor: pointer; }
+    .chave + .chave { border-top: 1px solid var(--linha); }
+    .chave small { display: block; color: var(--suave); font-size: 13px; }
+    .chave input { appearance: none; flex: none; position: relative; width: 46px; height: 26px; padding: 0; border: 0; border-radius: 999px; background: rgb(255 255 255 / .16); cursor: pointer; transition: background .2s; }
+    .chave input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s; }
+    .chave input:checked { background: var(--laranja); }
+    .chave input:checked::after { transform: translateX(20px); }
+    .opcao input { accent-color: var(--laranja); width: 18px; height: 18px; padding: 0; }
+    input[type="color"] { width: 100%; height: 48px; padding: 4px; cursor: pointer; }
+    input[type="range"] { padding: 0; accent-color: var(--laranja); }
+    .arquivo { display: inline-flex; position: relative; padding: 13px 18px; border-radius: 12px; border: 1px solid var(--linha); color: #fff; font-weight: 700; font-size: 16px; line-height: 1.2; cursor: pointer; }
+    .arquivo input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .salvar, #form-limites { display: grid; gap: 12px; }
+    #form-limites { margin: 18px 0; }
+    @media (max-width: 1000px) { .cabine { grid-template-columns: 1fr; } .lateral { position: static; } }
+    @media (max-width: 700px) {
+      body { padding: 18px 16px 40px 42px; }
+      header { flex-wrap: wrap; gap: 12px; }
+      header h1 { display: none; }
+      header > a { margin-left: 0; }
+      section { padding: 20px; }
+    }
     section { padding: 26px 28px; border-radius: 22px; border: 1px solid var(--linha); background: var(--vidro); display: grid; gap: 14px; align-content: start; }
     h2 { font-size: 20px; text-transform: uppercase; letter-spacing: .02em; }
     h3 { font-size: 15px; color: var(--laranja); text-transform: uppercase; letter-spacing: .1em; }
@@ -30,8 +63,8 @@
     strong { color: var(--texto); }
     ol, ul { padding-left: 20px; display: grid; gap: 6px; }
     label { display: grid; gap: 6px; font-size: 14px; color: var(--suave); }
-    input { font: inherit; color: var(--texto); padding: 11px 14px; border-radius: 12px; border: 1px solid var(--linha); background: rgb(0 0 0 / .3); }
-    input:focus { outline: 2px solid var(--laranja); border-color: transparent; }
+    input, select { font: inherit; color: var(--texto); padding: 11px 14px; border-radius: 12px; border: 1px solid var(--linha); background: rgb(0 0 0 / .3); }
+    input:focus, select:focus { outline: 2px solid var(--laranja); border-color: transparent; }
     button { font: 700 16px/1.2 "Marca", "Century Gothic", system-ui, sans-serif; color: #fff; cursor: pointer; padding: 13px 18px; border-radius: 12px; border: 0; background: var(--laranja); }
     button.secundario { background: transparent; border: 1px solid var(--linha); }
     button:disabled { opacity: .6; cursor: progress; }
@@ -60,10 +93,101 @@
   <header>
     <img src="logo-senai-branco.png" alt="SENAI">
     <h1>Cabine Mágica · Operador</h1>
+    <nav aria-label="Seções do painel">
+      <a href="#cabine">Cabine e evento</a>
+      <a href="#whatsapp">WhatsApp</a>
+    </nav>
     <a href="/">← Voltar para a cabine</a>
   </header>
 
-  <main>
+  <main data-aba="cabine">
+  <form id="form-evento" class="cabine">
+    <div class="coluna">
+      <section aria-labelledby="t-evento">
+        <h2 id="t-evento">Evento</h2>
+        <label>Nome do evento<input name="titulo" maxlength="60" required></label>
+        <div class="pares">
+          <label>Unidade<input name="unidade" maxlength="60"></label>
+          <label>Hashtag<input name="hashtag" maxlength="60"></label>
+        </div>
+        <div class="pares">
+          <label>Cor principal<input name="cor_primaria" type="color"></label>
+          <label>Cor de destaque<input name="cor_destaque" type="color"></label>
+        </div>
+      </section>
+
+      <section aria-labelledby="t-moldura">
+        <h2 id="t-moldura">Moldura e logo</h2>
+        <p id="estado-moldura"></p>
+        <input type="hidden" name="moldura_png">
+        <input type="hidden" name="logo">
+        <div class="linha">
+          <label class="arquivo">Enviar arte própria (PNG transparente)<input type="file" accept="image/png" data-envio="moldura_png"></label>
+          <button type="button" class="secundario" data-campo="moldura_png" data-valor="">Usar a moldura SENAI</button>
+        </div>
+        <h3>Logo na faixa</h3>
+        <div class="linha">
+          <label class="arquivo">Enviar logo (PNG)<input type="file" accept="image/png" data-envio="logo"></label>
+          <button type="button" class="secundario" data-campo="logo" data-valor="logo-senai-branco.png">Logo SENAI</button>
+          <button type="button" class="secundario" data-campo="logo" data-valor="">Sem logo</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="t-opcoes">
+        <h2 id="t-opcoes">Opções na cabine</h2>
+        <h3>Formatos habilitados</h3>
+        <div class="opcoes" id="formatos"></div>
+        <label>Formato inicial<select name="formato"></select></label>
+        <h3>Ajustes habilitados</h3>
+        <div class="opcoes" id="presets"></div>
+        <label>Ajuste inicial<select name="preset"></select></label>
+        <h3>Recursos</h3>
+        <div>
+          <label class="chave"><span>Pedir o WhatsApp do visitante<small>Desligado, a revisão mostra só a foto e o botão Concluir.</small></span><input type="checkbox" name="whatsapp"></label>
+          <label class="chave"><span>QR Code para baixar a foto<small>Precisa do cloudflared e de internet.</small></span><input type="checkbox" name="qr_download"></label>
+          <label class="chave"><span>Prévia espelhada<small>Como um espelho, igual à câmera do celular.</small></span><input type="checkbox" name="espelhar_previa"></label>
+          <label class="chave"><span>Foto salva espelhada<small>Desligado, textos em camisetas e banners saem legíveis.</small></span><input type="checkbox" name="espelhar_foto"></label>
+        </div>
+      </section>
+
+      <section aria-labelledby="t-camera">
+        <h2 id="t-camera">Câmera e foto</h2>
+        <div class="pares">
+          <label>Contagem regressiva (s)<input name="contagem" type="number" min="0" max="10" step="1"></label>
+          <label>Resolução da câmera
+            <select name="resolucao">
+              <option value="max">Máxima da câmera</option>
+              <option value="3840x2160">4K (3840×2160)</option>
+              <option value="2560x1440">QHD (2560×1440)</option>
+              <option value="1920x1080">Full HD (1920×1080)</option>
+              <option value="1280x720">HD (1280×720)</option>
+            </select>
+          </label>
+          <label>Quadros por segundo
+            <select name="fps">
+              <option value="15">15 (PC mais fraco)</option>
+              <option value="24">24</option>
+              <option value="30">30</option>
+              <option value="60">60</option>
+            </select>
+          </label>
+          <label>Qualidade do arquivo final: <strong id="qualidade"></strong><input name="qualidade_jpeg" type="range" min="0.5" max="1" step="0.01"></label>
+        </div>
+      </section>
+    </div>
+
+    <section class="lateral" aria-labelledby="t-previa">
+      <h2 id="t-previa">Prévia da moldura</h2>
+      <canvas id="previa" role="img" aria-label="Prévia da moldura com as configurações atuais"></canvas>
+      <div class="salvar">
+        <button>Salvar e aplicar na cabine</button>
+        <p id="retorno-evento" role="status"></p>
+      </div>
+    </section>
+  </form>
+  </main>
+
+  <main class="grade" data-aba="whatsapp" hidden>
     <section aria-labelledby="t-status">
       <h2 id="t-status">WhatsApp emissor</h2>
       <span class="selo" id="selo">Carregando…</span>
@@ -93,18 +217,31 @@
         <ol>
           <li>Num celular com o <strong>chip do evento</strong> e o WhatsApp (ou WhatsApp Business) instalado, abra <strong>Configurações → Aparelhos conectados → Conectar aparelho</strong>.</li>
           <li>Clique em <strong>Conectar celular</strong> abaixo e escaneie o QR Code que aparecer aqui.</li>
-          <li>Pronto: os números digitados na cabine recebem a foto como <strong>imagem</strong> e como <strong>arquivo em qualidade total</strong>.</li>
+          <li>Pronto: os números digitados na cabine recebem a foto como <strong>imagem</strong> e, se ligado abaixo, também como <strong>arquivo em qualidade total</strong>.</li>
         </ol>
         <div class="linha">
           <button type="button" id="conectar-celular">Conectar celular</button>
           <button type="button" class="secundario" id="desconectar-celular">Desconectar</button>
         </div>
+        <form id="form-limites">
+          <h3>Limites de envio</h3>
+          <div class="pares">
+            <label>Por hora<input name="limite_hora" type="number" min="1" step="1" required></label>
+            <label>Por dia (24 h)<input name="limite_dia" type="number" min="1" step="1" required></label>
+          </div>
+          <label class="chave"><span>Enviar também o arquivo em qualidade total<small>Dobra as mensagens por visitante. Desligado, a alta qualidade fica no QR de download.</small></span><input type="checkbox" name="enviar_arquivo"></label>
+          <p id="uso"></p>
+          <button>Salvar limites</button>
+          <p id="retorno-limites" role="status"></p>
+        </form>
         <div class="alerta">
           <p><strong>Para não perder o número:</strong> este modo usa o WhatsApp como um "WhatsApp Web" automático, o que não é oficial.</p>
           <ul>
             <li>Use um <strong>chip só para o evento</strong>, nunca o número pessoal nem o oficial do SENAI.</li>
             <li>Ative o chip uns dias antes: foto de perfil, nome "SENAI Fraiburgo · Cabine Mágica" e algumas conversas normais.</li>
             <li>Mantenha o celular carregado e com internet durante o evento.</li>
+            <li>O WhatsApp não publica um limite seguro. Há relatos de restrição a partir de 15 a 40 mensagens por dia para quem nunca falou com o número: comece com no máximo <strong>15 por hora e 50 por dia</strong>. O excedente espera na fila.</li>
+            <li>Se o WhatsApp recusar com o erro 463 (restrição), a cabine pausa sozinha. <strong>Não escaneie o QR de novo</strong>: espere a restrição acabar e clique em Reconectar.</li>
             <li>A cabine já se protege: confere se o número tem WhatsApp, espera de 8 a 20 s entre envios, mostra "digitando…" e varia o texto.</li>
           </ul>
         </div>
@@ -151,7 +288,7 @@
     <section aria-labelledby="t-template" data-so="meta 360dialog">
       <h2 id="t-template">Template a aprovar</h2>
       <p>Nos modos oficiais, quem nunca falou com o SENAI só recebe <strong>template aprovado</strong>. Crie no WhatsApp Manager dias antes do evento:</p>
-      <pre>Nome: foto_cabine_magica
+      <pre id="template">Nome: foto_cabine_magica
 Categoria: Utilidade (Utility)
 Idioma: Português (BR)
 Cabeçalho: Imagem (use uma foto da cabine como exemplo)
@@ -160,9 +297,11 @@ Rodapé: SENAI Fraiburgo</pre>
     </section>
   </main>
 
+  <script src="moldura.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
     const formConfig = $("#form-config");
+    const formLimites = $("#form-limites");
     let ultimo = {};
 
     function escolher(provedor) {
@@ -178,19 +317,26 @@ Rodapé: SENAI Fraiburgo</pre>
       const cel = s.celular;
       const [texto, classe] = s.pausa ? ["Envios pausados", "perigo"]
         : s.configurado ? ["Pronto para enviar", "ok"]
+        : cel?.status === "bloqueado" ? ["Bloqueado pelo WhatsApp", "perigo"]
         : cel?.status === "aguardando_qr" ? ["Escaneie o QR Code", "aviso"]
         : cel?.status === "erro" || s.erro_conta ? ["Erro na conexão", "perigo"]
         : ["Não conectado", "aviso"];
       $("#selo").textContent = texto;
       $("#selo").className = `selo ${classe}`;
       $("#conta").textContent = s.pausa ? `Pausado: ${s.pausa}. Corrija e salve (ou espere 10 min).`
-        : cel ? (cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em “Conectar celular”."))
+        : cel ? (cel.status === "bloqueado" ? cel.erro : cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em \"Conectar celular\"."))
         : s.erro_conta || (s.conta ? `Conectado: ${s.conta.display_phone_number} · ${s.conta.verified_name}` : s.configurado ? "Chave salva. Envie um teste para validar." : "");
       $("#qr-celular").hidden = !cel?.qr;
       if (cel?.qr) $("#qr-celular").innerHTML = `${cel.qr}<p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`;
       for (const chave of ["pendente", "enviado", "erro"]) $(`#n-${chave}`).textContent = s.fila[chave] ?? 0;
+      const cheio = s.enviados.hora >= s.limite_hora || s.enviados.dia >= s.limite_dia;
+      $("#uso").textContent = `Na última hora: ${s.enviados.hora} de ${s.limite_hora} · Em 24 h: ${s.enviados.dia} de ${s.limite_dia}${cheio ? " · limite atingido, a fila espera" : ""}`;
+      $("#conectar-celular").textContent = cel?.status === "bloqueado" ? "Reconectar" : "Conectar celular";
       $("#erros").replaceChildren(...s.erros.map((e) => Object.assign(document.createElement("div"), { textContent: `${e.destino} · ${e.status}: ${e.erro}` })));
       if (preencher) {
+        formLimites.elements.limite_hora.value = s.limite_hora;
+        formLimites.elements.limite_dia.value = s.limite_dia;
+        formLimites.elements.enviar_arquivo.checked = s.enviar_arquivo;
         escolher(s.provedor);
         for (const campo of ["phone_number_id", "template", "idioma", "versao_api"]) formConfig.elements[campo].value = s[campo] ?? "";
         formConfig.elements.token.placeholder = s.token_salvo ? "salvo (em branco mantém o atual)" : "cole aqui";
@@ -228,6 +374,14 @@ Rodapé: SENAI Fraiburgo</pre>
       if (ultimo.provedor !== "celular") await api("api/whatsapp/config", { provedor: "celular" });
       mostrar(await api("api/whatsapp/celular/conectar", {}), true);
     }, $("#retorno-config"));
+    formLimites.onsubmit = (e) => {
+      e.preventDefault();
+      const f = formLimites.elements;
+      acao(formLimites.querySelector("button"), async () => {
+        mostrar(await api("api/whatsapp/config", { limite_hora: Number(f.limite_hora.value), limite_dia: Number(f.limite_dia.value), enviar_arquivo: f.enviar_arquivo.checked }), true);
+        $("#retorno-limites").textContent = "Limites salvos.";
+      }, $("#retorno-limites"));
+    };
     $("#desconectar-celular").onclick = (e) => acao(e.target, async () => mostrar(await api("api/whatsapp/celular/desconectar", {})));
 
     $("#form-teste").onsubmit = (e) => {
@@ -242,8 +396,143 @@ Rodapé: SENAI Fraiburgo</pre>
     $("#verificar").onclick = async () => mostrar(await api("api/whatsapp?verificar=1"));
     $("#reenviar").onclick = async () => mostrar(await api("api/whatsapp/reenviar", {}));
 
+    function abrirAba() {
+      const aba = location.hash === "#whatsapp" ? "whatsapp" : "cabine";
+      document.querySelectorAll("[data-aba]").forEach((m) => (m.hidden = m.dataset.aba !== aba));
+      document.querySelectorAll("nav a").forEach((a) => (a.ariaCurrent = a.hash === `#${aba}` ? "page" : null));
+    }
+    addEventListener("hashchange", abrirAba);
+    abrirAba();
+
+    const formEvento = $("#form-evento");
+    const previa = $("#previa");
+    const imagens = new Map();
+    let modelo = {};
+    let desenhos = 0;
+
+    function carregar(src) {
+      if (!src) return Promise.resolve(null);
+      if (!imagens.has(src)) {
+        imagens.set(src, new Promise((ok) => Object.assign(new Image(), { onload: (e) => ok(e.target), onerror: () => ok(null), src })));
+      }
+      return imagens.get(src);
+    }
+
+    async function desenharPrevia() {
+      const vez = ++desenhos;
+      const c = lerEvento();
+      const [arte, logo] = await Promise.all([carregar(c.moldura_png), carregar(c.logo)]);
+      if (vez !== desenhos) return;
+      const proporcao = arte ? arte.naturalWidth / arte.naturalHeight : FORMATOS.find((f) => f.id === c.formato)?.proporcao ?? 16 / 9;
+      const A = 1000, L = Math.round(A * proporcao);
+      [previa.width, previa.height] = [L, A];
+      const g = previa.getContext("2d");
+      const fundo = g.createLinearGradient(0, 0, L, A);
+      fundo.addColorStop(0, "#9aa3b5");
+      fundo.addColorStop(1, "#384257");
+      g.fillStyle = fundo;
+      g.fillRect(0, 0, L, A);
+      g.fillStyle = "rgb(255 255 255 / .22)";
+      g.beginPath();
+      g.arc(L / 2, A * 0.36, A * 0.12, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.ellipse(L / 2, A * 0.86, A * 0.27, A * 0.3, 0, Math.PI, 0);
+      g.fill();
+      if (arte) g.drawImage(arte, 0, 0, L, A);
+      else desenharMoldura(g, L, A, c, logo);
+    }
+
+    function lerEvento() {
+      const dados = {};
+      for (const [chave, atual] of Object.entries(modelo)) {
+        const campo = formEvento.elements[chave];
+        if (Array.isArray(atual)) dados[chave] = [...formEvento.querySelectorAll(`[name="${chave}"]:checked`)].map((c) => c.value);
+        else if (typeof atual === "boolean") dados[chave] = campo.checked;
+        else if (typeof atual === "number") dados[chave] = Number(campo.value);
+        else dados[chave] = campo.value.trim();
+      }
+      return dados;
+    }
+
+    function preencherEvento(cfg) {
+      modelo = cfg;
+      for (const [chave, valor] of Object.entries(cfg)) {
+        if (Array.isArray(valor)) formEvento.querySelectorAll(`[name="${chave}"]`).forEach((c) => (c.checked = valor.includes(c.value)));
+        else if (typeof valor === "boolean") formEvento.elements[chave].checked = valor;
+        else formEvento.elements[chave].value = valor;
+      }
+      const nome = [cfg.titulo, cfg.unidade].filter(Boolean).join(" · ");
+      $("#template").textContent = `Nome: foto_cabine_magica
+Categoria: Utilidade (Utility)
+Idioma: Português (BR)
+Cabeçalho: Imagem (use uma foto da cabine como exemplo)
+Corpo: Olá! Aqui está a foto que você tirou na Cabine Mágica (${nome}). Obrigado pela visita!
+Rodapé: ${cfg.unidade}`;
+      sincronizar();
+    }
+
+    function sincronizar() {
+      for (const [lista, inicial] of [["formatos", "formato"], ["presets", "preset"]]) {
+        const ligados = [...formEvento.querySelectorAll(`[name="${lista}"]:checked`)].map((c) => c.value);
+        const escolha = formEvento.elements[inicial];
+        for (const opcao of escolha.options) opcao.disabled = !ligados.includes(opcao.value);
+        if (ligados.length && !ligados.includes(escolha.value)) escolha.value = ligados[0];
+      }
+      const arte = formEvento.elements.moldura_png.value;
+      $("#estado-moldura").textContent = arte
+        ? `Arte própria (${arte.split("/").pop()}). A foto segue a proporção da arte e a escolha de formato some da cabine.`
+        : "Moldura SENAI desenhada com o nome do evento, a unidade, a hashtag e as cores.";
+      $("#qualidade").textContent = `${Math.round(formEvento.elements.qualidade_jpeg.value * 100)}%`;
+      desenharPrevia();
+    }
+
+    function montarOpcoes(presets) {
+      const grupos = { formatos: FORMATOS.map((f) => ({ id: f.id, nome: `${f.nome} ${f.rotulo}` })), presets };
+      for (const [nome, itens] of Object.entries(grupos)) {
+        $(`#${nome}`).replaceChildren(...itens.map((item) => {
+          const rotulo = Object.assign(document.createElement("label"), { className: "opcao" });
+          rotulo.append(Object.assign(document.createElement("input"), { type: "checkbox", name: nome, value: item.id }), item.nome);
+          return rotulo;
+        }));
+      }
+      formEvento.elements.formato.replaceChildren(...FORMATOS.map((f) => new Option(f.nome, f.id)));
+      formEvento.elements.preset.replaceChildren(...presets.map((p) => new Option(p.nome, p.id)));
+    }
+
+    function alterado() {
+      sincronizar();
+      $("#retorno-evento").textContent = "Alterações não salvas.";
+    }
+
+    formEvento.addEventListener("input", alterado);
+    formEvento.querySelectorAll("[data-valor]").forEach((botao) => (botao.onclick = () => {
+      formEvento.elements[botao.dataset.campo].value = botao.dataset.valor;
+      alterado();
+    }));
+    formEvento.querySelectorAll("[data-envio]").forEach((entrada) => (entrada.onchange = () => acao(entrada, async () => {
+      const r = await fetch(`api/evento/imagem?campo=${entrada.dataset.envio}`, { method: "POST", headers: { "Content-Type": "image/png" }, body: entrada.files[0] });
+      const corpo = await r.json();
+      if (!r.ok) throw new Error(corpo.erro);
+      formEvento.elements[entrada.dataset.envio].value = corpo.caminho;
+      entrada.value = "";
+      alterado();
+    }, $("#retorno-evento"))));
+    formEvento.onsubmit = (e) => {
+      e.preventDefault();
+      acao(formEvento.querySelector(".salvar button"), async () => {
+        preencherEvento(await api("api/evento", lerEvento()));
+        $("#retorno-evento").textContent = "Salvo. A cabine aplica em até 3 segundos, assim que estiver na tela ao vivo.";
+      }, $("#retorno-evento"));
+    };
+
+    document.fonts.onloadingdone = desenharPrevia;
+    Promise.all([api("api/evento"), api("api/presets")]).then(([cfg, presets]) => {
+      montarOpcoes(presets);
+      preencherEvento(cfg);
+    });
+
     api("api/whatsapp?verificar=1").then((s) => mostrar(s, true));
-    // Atualiza sozinho: a cada 2 s enquanto espera o QR (ele muda a cada ~20 s), senão a cada 5 s.
     (function atualizar() {
       const rapido = ["aguardando_qr", "conectando"].includes(ultimo.celular?.status);
       setTimeout(() => api("api/whatsapp").then((s) => mostrar(s)).catch(() => {}).finally(atualizar), rapido ? 2000 : 5000);

@@ -1,9 +1,3 @@
-"""Download da foto no celular do visitante (QR Code na tela), de graça.
-
-Um servidor SEPARADO (porta 8766) responde só /f/<id>/<assinatura>: a página com a foto e o
-arquivo em qualidade total. Um túnel gratuito (Cloudflare Quick Tunnel, sem conta) dá a ele
-um endereço HTTPS público; o resto da cabine continua acessível só no próprio PC.
-"""
 import atexit
 import base64
 import hashlib
@@ -19,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 RAIZ = Path(__file__).resolve().parent
-SEGREDO = RAIZ / "segredo.key"  # assina os links; apague ao fim do evento e os links antigos param
+SEGREDO = RAIZ / "segredo.key"
 PORTA = 8766
 estado = {"url": None, "erro": None}
 _segredo = []
@@ -57,7 +51,7 @@ def assinatura(foto_id):
             SEGREDO.write_bytes(secrets.token_bytes(32))
         _segredo.append(SEGREDO.read_bytes())
     digest = hmac.new(_segredo[0], foto_id.encode(), hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(digest[:12]).decode()  # 96 bits: impossível adivinhar
+    return base64.urlsafe_b64encode(digest[:12]).decode()
 
 
 def link(foto_id):
@@ -94,8 +88,6 @@ class Publico(BaseHTTPRequestHandler):
 
 
 def _tunel():
-    """Cloudflare Quick Tunnel: lê a URL https://*.trycloudflare.com da saída do cloudflared.
-    Se o túnel cair (internet do evento), sobe outro; cada foto nova já pega a URL nova."""
     executavel = shutil.which("cloudflared") or next((str(p) for p in RAIZ.glob("cloudflared*") if p.is_file()), None)
     if not executavel:
         estado["erro"] = "cloudflared não instalado: o QR de download fica desligado"
@@ -104,13 +96,11 @@ def _tunel():
         processo = subprocess.Popen(
             [executavel, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{PORTA}"],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace",
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,  # sem janela preta
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
-        atexit.register(processo.terminate)  # não deixa o túnel órfão ao fechar a cabine
-        for linha in processo.stderr:  # continua lendo: o pipe cheio travaria o cloudflared
+        atexit.register(processo.terminate)
+        for linha in processo.stderr:
             if not estado["url"] and (achado := re.search(r"https://(?!api\.)[-a-z0-9]+\.trycloudflare\.com", linha)):
-                # O DNS do endereço novo leva alguns segundos; consultado cedo, o celular guarda
-                # "não existe" em cache por até 60 s. Então só mostra o QR depois.
                 threading.Timer(10, estado.update, kwargs={"url": achado[0], "erro": None}).start()
         estado.update(url=None, erro=f"túnel caiu (código {processo.wait()}); reconectando")
         threading.Event().wait(10)
@@ -118,6 +108,6 @@ def _tunel():
 
 def iniciar(fotos):
     Publico.fotos = fotos
-    servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), Publico)  # o túnel conecta por aqui
+    servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), Publico)
     threading.Thread(target=servidor.serve_forever, daemon=True, name="publico").start()
     threading.Thread(target=_tunel, daemon=True, name="tunel").start()
