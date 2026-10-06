@@ -332,11 +332,20 @@ async function fotografar() {
     .then(() => postar(`api/fotos?preset=${presetAtual}`, original, "image/jpeg"))
     .then(({ id }) => {
       if (presetAtual === cfg.preset) mostrarFoto(`fotos/${id}.jpg?v=${Date.now()}`);
+      mostrarQr(id);
       return id;
     });
   upload.catch(() => falha("A foto não foi salva. Verifique se a janela do cabine.py está aberta e se há espaço em disco."));
   tratando = upload;
   abrirRevisao();
+}
+
+// QR Code para o visitante baixar a foto no celular (só aparece se o túnel público estiver no ar).
+async function mostrarQr(id) {
+  const { qr } = await fetch(`api/fotos/${id}/link`).then((r) => r.json()).catch(() => ({}));
+  if (!qr || estado !== "revisao") return;
+  $("#qr").innerHTML = qr; // SVG gerado pelo próprio servidor
+  $("#baixar").hidden = false;
 }
 
 function mostrarFoto(src) {
@@ -383,6 +392,7 @@ async function postar(rota, corpo, tipo) {
 }
 
 function abrirRevisao() {
+  $("#baixar").hidden = true;
   campo.value = "";
   atualizarFormulario();
   marcarPresets();
