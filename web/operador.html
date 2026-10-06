@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operador · Cabine Mágica</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+  <link rel="icon" href="data:,">
   <style>
     @font-face { font-family: "Marca"; font-weight: 400; src: local("Century Gothic"), local("CenturyGothic"), url("fontes/texgyreadventor-regular.otf"); }
     @font-face { font-family: "Marca"; font-weight: 700; src: local("Century Gothic Bold"), local("CenturyGothic-Bold"), url("fontes/texgyreadventor-bold.otf"); }
@@ -324,7 +324,7 @@ Rodapé: SENAI Fraiburgo</pre>
       $("#selo").textContent = texto;
       $("#selo").className = `selo ${classe}`;
       $("#conta").textContent = s.pausa ? `Pausado: ${s.pausa}. Corrija e salve (ou espere 10 min).`
-        : cel ? (cel.status === "bloqueado" ? cel.erro : cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em “Conectar celular”."))
+        : cel ? (cel.status === "bloqueado" ? cel.erro : cel.numero ? `Celular conectado: +${cel.numero}` : cel.status === "aguardando_qr" ? "Escaneie o QR Code com o celular do evento." : cel.erro || (cel.status === "conectando" ? "Conectando…" : "Clique em \"Conectar celular\"."))
         : s.erro_conta || (s.conta ? `Conectado: ${s.conta.display_phone_number} · ${s.conta.verified_name}` : s.configurado ? "Chave salva. Envie um teste para validar." : "");
       $("#qr-celular").hidden = !cel?.qr;
       if (cel?.qr) $("#qr-celular").innerHTML = `${cel.qr}<p>WhatsApp → Aparelhos conectados → Conectar aparelho</p>`;
@@ -533,7 +533,6 @@ Rodapé: ${cfg.unidade}`;
     });
 
     api("api/whatsapp?verificar=1").then((s) => mostrar(s, true));
-    // Atualiza sozinho: a cada 2 s enquanto espera o QR (ele muda a cada ~20 s), senão a cada 5 s.
     (function atualizar() {
       const rapido = ["aguardando_qr", "conectando"].includes(ultimo.celular?.status);
       setTimeout(() => api("api/whatsapp").then((s) => mostrar(s)).catch(() => {}).finally(atualizar), rapido ? 2000 : 5000);

@@ -1,18 +1,7 @@
-"""Envio da foto pelo WhatsApp a partir da fila (fila/*.json), em um destes modos:
-
-- "celular" (padrão, grátis): o celular da cabine lê um QR Code e vira o emissor (celular.py,
-  biblioteca NÃO oficial: use chip dedicado). Manda imagem + arquivo em qualidade total.
-- "meta": número registrado direto na Cloud API (token permanente de System User).
-- "360dialog": número do app WhatsApp Business conectado por QR Code (coexistência) no
-  painel do parceiro; a cabine só usa a chave de API gerada lá.
-
-Uma thread lê fila/*.json "pendente", sobe a foto, manda o template aprovado com a foto no
-cabeçalho e grava o resultado no próprio pedido. Configuração em whatsapp.json (fora de web/,
-nunca vai para o navegador). Teste rápido:  python whatsapp.py 49999991234
-"""
 import json
 import logging
 import secrets
+import sys
 import threading
 import time
 import urllib.error
@@ -31,13 +20,25 @@ PADRAO = {
     "provedor": "celular", "token": "", "phone_number_id": "", "versao_api": "v26.0", "template": "foto_cabine_magica",
     "idioma": "pt_BR", "api_base": "", "limite_hora": 15, "limite_dia": 50, "enviar_arquivo": True,
 }
-LIMITE_IMAGEM = 5_000_000  # Cloud API: imagem JPEG/PNG de até 5 MB
+LIMITE_IMAGEM = 5_000_000
 
-# Códigos oficiais (developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
-REPETIR = {1, 2, 4, 429, 80007, 130429, 131000, 131056, 131057}  # instabilidade/limite: tenta de novo com espera 4^n
-PAUSAR = {0, 3, 10, 190, 200, 368, 401, 403, 131005, 131031, 131042, 132001, 132015, 132016, 133010}  # problema na conta/config
+REPETIR = {1, 2, 4, 429, 80007, 130429, 131000, 131056, 131057}
+PAUSAR = {0, 3, 10, 190, 200, 368, 401, 403, 131005, 131031, 131042, 132001, 132015, 132016, 133010}
 TRAVA = threading.Lock()
 estado = {"pausa": None, "pausa_desde": 0.0}
+log = logging.getLogger("cabine")
+
+
+def gravar(caminho, dados):
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
+    temporario.write_bytes(dados)
+    for _ in range(40):
+        try:
+            return temporario.replace(caminho)
+        except PermissionError:
+            time.sleep(0.05)
+    temporario.replace(caminho)
 
 
 class ErroWhatsApp(Exception):
@@ -60,7 +61,6 @@ def carregar():
 
 
 def salvar(novos):
-    """Grava só as chaves conhecidas; token em branco mantém o atual."""
     cfg = carregar()
     anterior = cfg["provedor"]
     for chave, padrao in PADRAO.items():
@@ -75,13 +75,11 @@ def salvar(novos):
     if cfg["limite_hora"] < 1 or cfg["limite_dia"] < 1:
         raise ValueError("os limites de envio precisam ser de pelo menos 1")
     if cfg["provedor"] != anterior and not str(novos.get("token", "")).strip():
-        cfg["token"] = ""  # o token de um provedor não serve para outro
+        cfg["token"] = ""
     if cfg["provedor"] not in ("celular", "meta", "360dialog"):
         raise ValueError("provedor deve ser 'celular', 'meta' ou '360dialog'")
-    temporario = CONFIG.with_suffix(".tmp")
-    temporario.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporario.replace(CONFIG)
-    estado["pausa"] = None  # configuração nova: volta a tentar
+    gravar(CONFIG, json.dumps(cfg, ensure_ascii=False, indent=2).encode())
+    estado["pausa"] = None
 
 
 def configurado(cfg):
@@ -91,16 +89,15 @@ def configurado(cfg):
 
 
 def _endpoint(cfg, recurso):
-    """URL e autenticação. api_base (opcional) aponta para outro parceiro compatível com a Cloud API."""
     if cfg["provedor"] == "360dialog":
         return f"{cfg['api_base'] or 'https://waba-v2.360dialog.io'}/{recurso}", {"D360-API-KEY": cfg["token"]}
     base = cfg["api_base"] or f"https://graph.facebook.com/{cfg['versao_api']}"
     return f"{base}/{cfg['phone_number_id']}/{recurso}".rstrip("/"), {"Authorization": f"Bearer {cfg['token']}"}
 
 
-def _chamar(cfg, recurso, corpo=None, tipo="application/json", metodo="POST"):
+def _chamar(cfg, recurso, corpo=None, tipo="application/json", consulta=""):
     url, cabecalhos = _endpoint(cfg, recurso)
-    req = urllib.request.Request(url, data=corpo, method=metodo, headers={**cabecalhos, "Content-Type": tipo})
+    req = urllib.request.Request(url + consulta, data=corpo, headers={**cabecalhos, "Content-Type": tipo})
     try:
         with urllib.request.urlopen(req, timeout=40) as resposta:
             return json.load(resposta)
@@ -110,12 +107,11 @@ def _chamar(cfg, recurso, corpo=None, tipo="application/json", metodo="POST"):
         except ValueError:
             info = {}
         raise ErroWhatsApp(info.get("code", erro.code), info.get("message", erro.reason), (info.get("error_data") or {}).get("details"), erro.code) from None
-    except (urllib.error.URLError, TimeoutError, OSError) as erro:  # sem internet: tenta de novo depois
+    except (urllib.error.URLError, TimeoutError, OSError) as erro:
         raise ErroWhatsApp(None, f"sem conexão com o WhatsApp ({erro})") from None
 
 
 def jpeg_para_envio(dados):
-    """Garante o limite de 5 MB reduzindo resolução/qualidade só da cópia enviada."""
     if len(dados) <= LIMITE_IMAGEM:
         return dados
     img = cv2.imdecode(np.frombuffer(dados, np.uint8), cv2.IMREAD_COLOR)
@@ -137,7 +133,6 @@ def subir_foto(cfg, jpeg):
 
 
 def enviar_template(cfg, destino, media_id):
-    """Template aprovado com a foto no cabeçalho: único tipo permitido para quem nunca escreveu à empresa."""
     corpo = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -154,22 +149,9 @@ def enviar_template(cfg, destino, media_id):
 
 
 def conta(cfg):
-    """Número e nome verificados (só na Cloud API direta; o parceiro não expõe essa rota)."""
     if cfg["provedor"] != "meta":
         return None
-    url, cabecalhos = _endpoint(cfg, "")
-    req = urllib.request.Request(f"{url}?fields=display_phone_number,verified_name,quality_rating", headers=cabecalhos)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resposta:
-            return json.load(resposta)
-    except urllib.error.HTTPError as erro:
-        try:
-            info = json.load(erro).get("error", {})
-        except ValueError:
-            info = {}
-        raise ErroWhatsApp(info.get("code", erro.code), info.get("message", erro.reason), http=erro.code) from None
-    except (urllib.error.URLError, TimeoutError, OSError) as erro:
-        raise ErroWhatsApp(None, f"sem conexão com o WhatsApp ({erro})") from None
+    return _chamar(cfg, "", consulta="?fields=display_phone_number,verified_name,quality_rating")
 
 
 def _ler(caminho):
@@ -177,24 +159,16 @@ def _ler(caminho):
 
 
 def _gravar(caminho, pedido):
-    temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
-    temporario.write_text(json.dumps(pedido, ensure_ascii=False, indent=2), encoding="utf-8")
-    for tentativa in range(40):  # Windows: falha se a tela está lendo o pedido naquele instante
-        try:
-            return temporario.replace(caminho)
-        except PermissionError:
-            time.sleep(0.05)
-    temporario.replace(caminho)
+    gravar(caminho, json.dumps(pedido, ensure_ascii=False, indent=2).encode())
 
 
 def _mais_tarde(pedido):
     pedido["tentativas"] = pedido.get("tentativas", 0) + 1
-    espera = min(4 ** pedido["tentativas"], 900)  # 4, 16, 64… até 15 min (recomendação da Meta)
+    espera = min(4 ** pedido["tentativas"], 900)
     pedido["proxima_tentativa"] = (datetime.now() + timedelta(seconds=espera)).isoformat(timespec="seconds")
 
 
 def processar(caminho, fotos, cfg):
-    """Envia um pedido da fila. Devolve False se a fila deve pausar (problema na conta)."""
     with TRAVA:
         pedido = _ler(caminho)
     if pedido.get("status") != "pendente" or pedido.get("proxima_tentativa", "") > datetime.now().isoformat():
@@ -204,7 +178,7 @@ def processar(caminho, fotos, cfg):
             pedido["wamid"] = celular.enviar(pedido["destino"], fotos / pedido["foto"], f"cabine-magica-{pedido['foto']}", pedido.get("evento", ""), cfg["enviar_arquivo"])
         else:
             if not pedido.get("media_id") or pedido.get("media_em", "") < (datetime.now() - timedelta(days=29)).isoformat():
-                pedido["media_id"] = subir_foto(cfg, jpeg_para_envio((fotos / pedido["foto"]).read_bytes()))  # vale 30 dias
+                pedido["media_id"] = subir_foto(cfg, jpeg_para_envio((fotos / pedido["foto"]).read_bytes()))
                 pedido["media_em"] = datetime.now().isoformat(timespec="seconds")
             pedido["wamid"], pedido["wa_id"] = enviar_template(cfg, pedido["destino"], pedido["media_id"])
         pedido.update(status="enviado", enviado_em=datetime.now().isoformat(timespec="seconds"), erro=None)
@@ -221,11 +195,11 @@ def processar(caminho, fotos, cfg):
         elif erro.tipo == "repetir":
             _mais_tarde(pedido)
         else:
-            pedido["status"] = "erro"  # sem WhatsApp, número inválido…: o operador decide reenviar
+            pedido["status"] = "erro"
     except OSError as erro:
         pedido.update(status="erro", erro=f"foto não encontrada ({erro})")
-    except Exception as erro:  # resposta inesperada: vira erro (o operador reenvia), nunca derruba a thread
-        logging.getLogger("cabine").exception("envio %s falhou", caminho.name)
+    except Exception as erro:
+        log.exception("envio %s falhou", caminho.name)
         pedido.update(status="erro", erro=f"falha inesperada ({erro!r})")
     with TRAVA:
         _gravar(caminho, pedido)
@@ -235,7 +209,6 @@ def processar(caminho, fotos, cfg):
 def trabalhar(fila, fotos):
     while True:
         cfg = carregar()
-        # Conta com problema: espera o operador salvar a configuração (zera a pausa) ou 10 min.
         if estado["pausa"] and time.time() - estado["pausa_desde"] > 600:
             estado["pausa"] = None
         if configurado(cfg) and not estado["pausa"]:
@@ -245,8 +218,8 @@ def trabalhar(fila, fotos):
                 try:
                     if not processar(caminho, fotos, cfg):
                         break
-                except Exception:  # pedido ilegível etc.: registra e segue com os outros
-                    logging.getLogger("cabine").exception("pedido %s ilegível", caminho.name)
+                except Exception:
+                    log.exception("pedido %s ilegível", caminho.name)
         time.sleep(2)
 
 
@@ -273,7 +246,8 @@ def resumo(fila):
             pedido = _ler(caminho)
         except (OSError, ValueError):
             continue
-        contagem[pedido.get("status", "pendente")] = contagem.get(pedido.get("status", "pendente"), 0) + 1
+        status = pedido.get("status", "pendente")
+        contagem[status] = contagem.get(status, 0) + 1
         if pedido.get("erro") and len(erros) < 10:
             erros.append({"id": caminho.stem, "destino": pedido["destino"], "status": pedido["status"], "erro": pedido["erro"]})
     return {"fila": contagem, "erros": erros, "enviados": {"hora": enviados(fila, 1), "dia": enviados(fila, 24)}}
@@ -285,19 +259,17 @@ def reenviar_erros(fila):
             pedido = _ler(caminho)
             if pedido.get("status") == "erro":
                 pedido.update(status="pendente", tentativas=0, proxima_tentativa="", erro=None)
-                pedido.pop("media_id", None)  # pode ser de outra conta: sobe a foto de novo
+                pedido.pop("media_id", None)
                 _gravar(caminho, pedido)
     estado["pausa"] = None
 
 
 def testar(destino, fotos, evento=""):
-    """Envia agora (sem fila) uma imagem de teste: valida conexão, conta, token e template.
-    Nunca usa foto de visitante: o teste pode ir para qualquer número."""
     cfg = carregar()
     if not configurado(cfg):
         falta = "conecte o celular da cabine (QR Code no painel)" if cfg["provedor"] == "celular" else "preencha o token, o template e (na Meta) o phone_number_id"
         raise ErroWhatsApp("config", falta)
-    img = np.full((1080, 1920, 3), (147, 65, 22), np.uint8)  # azul SENAI (BGR)
+    img = np.full((1080, 1920, 3), (147, 65, 22), np.uint8)
     cv2.putText(img, "Teste da Cabine Magica", (420, 560), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 6)
     jpeg = cv2.imencode(".jpg", img)[1].tobytes()
     if cfg["provedor"] == "celular":
@@ -317,9 +289,6 @@ def iniciar(fila, fotos):
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Auto-teste offline da classificação de erros e do limite de 5 MB.
     assert ErroWhatsApp(131056, "pair rate").tipo == "repetir"
     assert ErroWhatsApp(None, "sem internet").tipo == "repetir"
     assert ErroWhatsApp(190, "token expirado").tipo == "pausar"
@@ -328,5 +297,5 @@ if __name__ == "__main__":
     ruido = np.random.default_rng(0).integers(0, 255, (3000, 4000, 3), np.uint8)
     assert len(jpeg_para_envio(cv2.imencode(".jpg", ruido, [cv2.IMWRITE_JPEG_QUALITY, 100])[1].tobytes())) <= LIMITE_IMAGEM
     print("auto-teste ok")
-    if len(sys.argv) > 1:  # envio real: python whatsapp.py 49999991234  (DDD + número, sem o 55)
+    if len(sys.argv) > 1:
         print(testar("55" + "".join(c for c in sys.argv[1] if c.isascii() and c.isdigit()), RAIZ / "fotos"))

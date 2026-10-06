@@ -1,16 +1,9 @@
-"""Cabine Mágica — SENAI Fraiburgo.
-
-Servidor local: entrega a interface (web/), trata e salva as fotos (tratamento.py) e
-registra os pedidos de envio em fila/, que o whatsapp.py envia pela API oficial.
-Rode com:  python cabine.py
-"""
 import json
 import logging
 import re
 import secrets
 import struct
 import sys
-import time
 import webbrowser
 from datetime import datetime
 from functools import partial
@@ -24,12 +17,13 @@ import celular
 import compartilhar
 import tratamento
 import whatsapp
+from whatsapp import gravar
 
 RAIZ = Path(__file__).resolve().parent
 WEB = RAIZ / "web"
-FOTOS = RAIZ / "fotos"  # finais (tratadas + moldura): são as enviadas
-ORIGINAIS = FOTOS / "originais"  # como saíram da câmera, para trocar o ajuste
-MOLDURAS = RAIZ / "molduras"  # camada PNG da moldura por resolução, gerada pela interface
+FOTOS = RAIZ / "fotos"
+ORIGINAIS = FOTOS / "originais"
+MOLDURAS = RAIZ / "molduras"
 FILA = RAIZ / "fila"
 EVENTO = RAIZ / "evento.json"
 PORTA = 8765
@@ -129,19 +123,6 @@ def salvar_imagem(campo, png):
     return nome
 
 
-def gravar(caminho, dados):
-    """Escrita atômica: quem lê (interface, envio) nunca vê arquivo pela metade."""
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    temporario = caminho.with_name(f".{caminho.name}.{secrets.token_hex(4)}.tmp")
-    temporario.write_bytes(dados)
-    for tentativa in range(40):  # Windows: falha se alguém está lendo o arquivo naquele instante
-        try:
-            return temporario.replace(caminho)
-        except PermissionError:
-            time.sleep(0.05)
-    temporario.replace(caminho)
-
-
 def validar_id(foto_id):
     if not ID_FOTO.fullmatch(str(foto_id)) or not (ORIGINAIS / f"{foto_id}.jpg").exists():
         raise ValueError("foto não encontrada")
@@ -149,7 +130,6 @@ def validar_id(foto_id):
 
 
 def normalizar_whatsapp(numero):
-    """Celular brasileiro (DDD + 9 + 8 dígitos) -> '55DD9XXXXXXXX'; inválido -> None."""
     digitos = re.sub(r"\D", "", str(numero), flags=re.ASCII)
     return "55" + digitos if re.fullmatch(r"[1-9]{2}9[0-9]{8}", digitos) else None
 
@@ -166,7 +146,6 @@ def salvar_moldura(png):
 
 
 def tratar(foto_id, preset=None):
-    """Original -> preset -> moldura -> fotos/<id>.jpg."""
     cfg = evento()
     preset = preset or cfg["preset"]
     if preset not in tratamento.PRESETS:
@@ -175,7 +154,7 @@ def tratar(foto_id, preset=None):
     qualidade = round(cfg["qualidade_jpeg"] * 100)
     try:
         final = tratamento.processar(original, preset, MOLDURAS, qualidade)
-    except Exception:  # o ajuste falhou: a pessoa ainda recebe a foto, só sem o ajuste
+    except Exception:
         log.exception("tratamento %s falhou em %s", preset, foto_id)
         final = tratamento.processar(original, "original", MOLDURAS, qualidade)
     gravar(FOTOS / f"{foto_id}.jpg", final)
@@ -185,18 +164,17 @@ def salvar_foto(jpeg, preset=None):
     if not jpeg.startswith(b"\xff\xd8"):
         raise ValueError("a foto precisa ser JPEG")
     foto_id = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
-    gravar(ORIGINAIS / f"{foto_id}.jpg", jpeg)  # primeiro o original: nada se perde se o resto falhar
+    gravar(ORIGINAIS / f"{foto_id}.jpg", jpeg)
     tratar(foto_id, preset)
     return foto_id
 
 
-def enfileirar_envio(foto_id, whatsapp):
-    """Cria fila/<id>.json com status 'pendente'; o whatsapp.py envia e atualiza o status."""
+def enfileirar_envio(foto_id, numero):
     validar_id(foto_id)
     cfg = evento()
     if not cfg["whatsapp"]:
         raise ValueError("o envio por WhatsApp está desligado no painel do operador")
-    destino = normalizar_whatsapp(whatsapp)
+    destino = normalizar_whatsapp(numero)
     if not destino:
         raise ValueError("número de WhatsApp inválido")
     pedido = {
@@ -219,13 +197,10 @@ def status_envio(foto_id):
 
 
 def svg_qr(texto, correcao):
-    """QR em SVG escalável (viewBox: encolhe sem cortar), preto no branco e com a margem de
-    4 módulos que a norma pede; sem isso os leitores (inclusive o do WhatsApp) falham."""
     return segno.make(texto, error=correcao).svg_inline(border=4, dark="#000000", light="#ffffff", omitsize=True)
 
 
 def link_download(foto_id):
-    """URL pública (túnel) e QR Code para o visitante baixar a foto no celular."""
     validar_id(foto_id)
     url = compartilhar.link(foto_id) if evento()["qr_download"] else None
     qr = svg_qr(url, "m") if url else None
@@ -233,10 +208,9 @@ def link_download(foto_id):
 
 
 def status_whatsapp(verificar=False):
-    """Painel do operador: configuração (sem o token), pausa, fila e, se pedido, a conta na API."""
     cfg = whatsapp.carregar()
     situacao = {**{k: v for k, v in cfg.items() if k != "token"}, "token_salvo": bool(cfg["token"]), "configurado": whatsapp.configurado(cfg)}
-    if verificar and situacao["configurado"]:  # sob demanda: a Meta limita chamadas de gestão por hora
+    if verificar and situacao["configurado"]:
         try:
             situacao["conta"] = whatsapp.conta(cfg)
         except whatsapp.ErroWhatsApp as erro:
@@ -262,7 +236,7 @@ class Cabine(SimpleHTTPRequestHandler):
         if achado := re.fullmatch(r"/api/fotos/([\w-]+)/link", rota):
             return self.responder(200, link_download(achado[1]))
         if rota == "/api/whatsapp":
-            return self.responder(200, status_whatsapp("verificar" in parse_qs(urlsplit(self.path).query)))
+            return self.responder(200, status_whatsapp("verificar" in urlsplit(self.path).query))
         if achado := re.fullmatch(r"/fotos/([\w-]+)\.jpg", rota):
             return self.arquivo(FOTOS / f"{achado[1]}.jpg" if ID_FOTO.fullmatch(achado[1]) else None)
         super().do_GET()
@@ -312,11 +286,10 @@ class Cabine(SimpleHTTPRequestHandler):
                 self.responder(200, status_whatsapp())
             else:
                 self.responder(404, {"erro": "rota inexistente"})
-        except ValueError as erro:  # inclui JSON malformado
+        except ValueError as erro:
             self.responder(400, {"erro": str(erro)})
 
     def permitido(self, post=False):
-        """Só a própria cabine: bloqueia DNS rebinding (Host) e outros sites no mesmo navegador (Origin)."""
         host = self.headers.get("Host", "").rsplit(":", 1)[0]
         origem = self.headers.get("Origin")
         if host not in ("127.0.0.1", "localhost") or (post and origem and urlsplit(origem).hostname not in ("127.0.0.1", "localhost")):
@@ -355,29 +328,25 @@ class Cabine(SimpleHTTPRequestHandler):
         self.wfile.write(corpo)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")  # editou o config.json? basta recarregar
+        self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
     def log_message(self, formato, *args):
-        # Vai para cabine.log, não para o console: no Windows, clicar na janela do console
-        # pausa a escrita e travaria as requisições.
         log.info(formato, *args)
 
 
 if __name__ == "__main__":
     logging.basicConfig(filename=RAIZ / "cabine.log", level=logging.INFO, format="%(asctime)s %(message)s")
-    # No Windows, sem isso uma segunda janela do cabine.py subiria na mesma porta e enviaria tudo em dobro.
     ThreadingHTTPServer.allow_reuse_address = sys.platform != "win32"
-    # Só 127.0.0.1: a cabine não fica exposta na rede do evento.
     servidor = ThreadingHTTPServer(("127.0.0.1", PORTA), partial(Cabine, directory=WEB))
     whatsapp.iniciar(FILA, FOTOS)
     if whatsapp.carregar()["provedor"] == "celular" and celular.SESSAO.exists():
-        celular.iniciar()  # reconecta com a sessão salva, sem novo QR
+        celular.iniciar()
     compartilhar.iniciar(FOTOS)
     url = f"http://127.0.0.1:{PORTA}"
     print(f"Cabine Mágica no ar em {url}  (Ctrl+C para encerrar; registros em cabine.log)")
     print(f"Painel do operador (WhatsApp, fila de envios): {url}/operador.html")
-    if "--sem-navegador" not in sys.argv:  # no quiosque, quem abre o Chrome é o atalho de inicialização
+    if "--sem-navegador" not in sys.argv:
         webbrowser.open(url)
     try:
         servidor.serve_forever()

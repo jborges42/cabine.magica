@@ -1,9 +1,3 @@
-"""Tratamento das fotos da cabine: correções discretas de fotógrafo (OpenCV).
-
-Os presets trabalham no ORIGINAL, sem moldura; a moldura entra por último, então as
-cores da marca nunca são alteradas. Cada preset recebe (imagem BGR uint8, rostos) e
-devolve a imagem tratada. Comparar presets numa foto:  python tratamento.py foto.jpg
-"""
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -11,29 +5,26 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-YUNET = str(Path(__file__).with_name("modelos") / "face_detection_yunet_2026may.onnx")  # OpenCV Zoo, MIT
+YUNET = str(Path(__file__).with_name("modelos") / "face_detection_yunet_2026may.onnx")
 X = np.arange(256, dtype=np.float32) / 255
 cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
 
 
 def rostos(img):
-    """Caixas (x, y, l, a) dos rostos (YuNet), procuradas numa cópia de 640 px: rápido até em 4K."""
     escala = min(1.0, 640 / max(img.shape[:2]))
     pequena = cv2.resize(img, None, fx=escala, fy=escala, interpolation=cv2.INTER_AREA)
-    detector = cv2.FaceDetectorYN.create(YUNET, "", pequena.shape[1::-1], score_threshold=0.7)  # 1 por chamada: thread-safe
+    detector = cv2.FaceDetectorYN.create(YUNET, "", pequena.shape[1::-1], score_threshold=0.7)
     _, caixas = detector.detect(pequena)
     return [tuple(int(v / escala) for v in caixa[:4]) for caixa in (caixas if caixas is not None else [])]
 
 
 def balanco_branco(img, forca=0.5, limite=14):
-    """Mundo cinza em LAB, parcial e limitado. Só votam pixels quase neutros (paredes, roupas
-    claras): um fundo laranja ou um banner azul não "puxam" a correção."""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     amostra = lab[::4, ::4]
     croma = np.hypot(amostra[..., 1] - 128, amostra[..., 2] - 128)
     votam = (amostra[..., 0] > 30) & (amostra[..., 0] < 230) & (croma < 30)
-    if votam.mean() > 0.02:  # pouca coisa neutra na cena: melhor não mexer
-        peso = lab[..., 0] / 255  # proporcional à luz: tons escuros (roupas) quase não mudam de cor
+    if votam.mean() > 0.02:
+        peso = lab[..., 0] / 255
         for canal in (1, 2):
             desvio = np.clip(amostra[..., canal][votam].mean() - 128, -limite, limite)
             lab[..., canal] -= desvio * forca * peso
@@ -41,14 +32,12 @@ def balanco_branco(img, forca=0.5, limite=14):
 
 
 def curva_luz(img, curva):
-    """Aplica a curva só na luminosidade (L do LAB): a cor (matiz e saturação) não muda."""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     lab[..., 0] = cv2.LUT(lab[..., 0], np.clip(curva * 255, 0, 255).astype(np.uint8))
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
 def exposicao(img, alvo=0.42, limites=(0.8, 1.3)):
-    """Gama pela luminância média-logarítmica da CENA (não do rosto: não "clareia" tons de pele)."""
     luz = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[::4, ::4, 0].astype(np.float32) / 255
     chave = float(np.exp(np.log(luz + 0.01).mean()))
     gama = float(np.clip(np.log(alvo) / np.log(max(chave, 0.02)), *limites))
@@ -56,14 +45,12 @@ def exposicao(img, alvo=0.42, limites=(0.8, 1.3)):
 
 
 def niveis(img, corte=(0.4, 99.8), limites=(28, 215)):
-    """Ponto de preto e de branco automáticos (o "Auto" dos Níveis), sem esticar demais."""
     preto, branco = np.percentile(cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[::4, ::4, 0], corte)
     preto, branco = min(preto, limites[0]), max(branco, limites[1])
     return curva_luz(img, np.clip((X * 255 - preto) / (branco - preto), 0, 1))
 
 
 def tons(img, sombras=0.0, realces=0.0, contraste=0.0, local=0.0):
-    """Curva só na luminosidade (LAB): abre sombras, segura realces, contraste em S e CLAHE suave."""
     curva = X + sombras * 6.75 * X * (1 - X) ** 2 - realces * 6.75 * X**2 * (1 - X)
     curva += contraste * (X * X * (3 - 2 * X) - X)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -76,7 +63,6 @@ def tons(img, sombras=0.0, realces=0.0, contraste=0.0, local=0.0):
 
 
 def ruido(img):
-    """Ruído de cor (o "granulado colorido" de webcam) some; o de luminância só é aparado."""
     ycc = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     altura, largura = img.shape[:2]
     for canal in (1, 2):
@@ -87,7 +73,6 @@ def ruido(img):
 
 
 def nitidez(img, quantidade=0.35, limiar=3):
-    """Máscara de nitidez na luminância, com limiar: realça bordas, não o granulado."""
     ycc = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     luz = ycc[..., 0]
     detalhe = (luz.astype(np.int16) - cv2.GaussianBlur(luz, (0, 0), max(0.8, img.shape[1] / 1920))).astype(np.float32)
@@ -97,7 +82,6 @@ def nitidez(img, quantidade=0.35, limiar=3):
 
 
 def vibracao(img, quantidade=0.2):
-    """Saturação que puxa mais as cores apagadas e poupa tons de pele."""
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     curva = lambda q: np.clip((X + q * X * (1 - X)) * 255, 0, 255).astype(np.uint8)
     pele = (hsv[..., 0] < 25) | (hsv[..., 0] > 165)
@@ -106,7 +90,6 @@ def vibracao(img, quantidade=0.2):
 
 
 def mascara_rostos(img, caixas, escala_elipse=1.0):
-    """Máscara suave (0–1) em volta dos rostos, calculada em baixa resolução."""
     altura, largura = img.shape[:2]
     fator = min(1.0, 480 / max(altura, largura))
     mascara = np.zeros((int(altura * fator), int(largura * fator)), np.float32)
@@ -120,7 +103,6 @@ def mascara_rostos(img, caixas, escala_elipse=1.0):
 
 
 def luz_nos_rostos(img, caixas, forca=0.14):
-    """"Rebatedor" digital: ilumina os meios-tons em volta dos rostos, sem estourar realces."""
     if not caixas:
         return img
     f = img.astype(np.float32) / 255
@@ -129,7 +111,6 @@ def luz_nos_rostos(img, caixas, forca=0.14):
 
 
 def pele_suave(img, caixas, forca=0.4):
-    """Suavização bem leve, só na pele dentro da região dos rostos; a textura continua visível."""
     saida = img.copy()
     for x, y, l, a in caixas:
         x0, y0 = max(0, x - l // 4), max(0, y - a // 4)
@@ -146,14 +127,12 @@ def pele_suave(img, caixas, forca=0.4):
 
 
 def preto_e_branco(img):
-    """P&B com mistura de canais que favorece a pele, e curva em S clássica."""
     b, g, r = cv2.split(img.astype(np.float32))
     cinza = np.clip(0.38 * r + 0.50 * g + 0.12 * b, 0, 255).astype(np.uint8)
     return tons(cv2.cvtColor(cinza, cv2.COLOR_GRAY2BGR), contraste=0.25, local=0.3)
 
 
 def natural(img, caixas):
-    # Ordem de fotógrafo: ruído antes de clarear (senão o granulado sobe junto), nitidez por último.
     img = balanco_branco(ruido(img))
     img = niveis(exposicao(img))
     img = vibracao(tons(img, sombras=0.12, realces=0.10, local=0.35), 0.12)
@@ -176,7 +155,6 @@ def _moldura(caminho, _mtime):
 
 
 def aplicar_moldura(img, caminho):
-    """Cola a moldura (PNG BGRA gerado pela interface) por cima da foto tratada."""
     caminho = Path(caminho)
     if not caminho.exists():
         return img
@@ -188,13 +166,12 @@ def aplicar_moldura(img, caminho):
 
 
 def processar(jpeg, preset="natural", molduras=None, qualidade=92):
-    """Bytes do original → bytes do JPEG final (tratado + molduras/<largura>x<altura>.png)."""
     img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("imagem inválida")
     if preset not in PRESETS:
         raise ValueError(f"preset desconhecido: {preset}")
-    img = PRESETS[preset][1](img, rostos(img) if preset in ("estudio", "pele") else [])  # só quem usa rosto
+    img = PRESETS[preset][1](img, rostos(img) if preset in ("estudio", "pele") else [])
     if molduras:
         img = aplicar_moldura(img, Path(molduras) / f"{img.shape[1]}x{img.shape[0]}.png")
     return cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, int(qualidade)])[1].tobytes()
@@ -203,7 +180,6 @@ def processar(jpeg, preset="natural", molduras=None, qualidade=92):
 if __name__ == "__main__":
     import time
 
-    # Auto-teste: cena escura e azulada deve sair mais clara e mais neutra em todos os presets.
     rng = np.random.default_rng(0)
     teste = np.clip(rng.normal((70, 45, 35), 12, (720, 1280, 3)), 0, 255).astype(np.uint8)
     for nome, (_, funcao) in PRESETS.items():
@@ -222,7 +198,7 @@ if __name__ == "__main__":
     assert final.max() < 10, "moldura opaca preta deveria cobrir tudo"
     print("auto-teste ok")
 
-    for arquivo in sys.argv[1:]:  # gera arquivo.<preset>.jpg para comparar
+    for arquivo in sys.argv[1:]:
         original = Path(arquivo).read_bytes()
         for nome in PRESETS:
             inicio = time.perf_counter()
