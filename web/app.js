@@ -34,6 +34,7 @@ let cameras = [];
 let presets = [];
 let tratando = Promise.resolve();
 let marco = 0; // quando a revisão/conclusão abriu: ignora o Enter "colado" da tela anterior
+let sessao = 0; // muda a cada foto: respostas atrasadas de um visitante não aparecem para o próximo
 const camadas = new Map(); // moldura pré-desenhada por tamanho
 const moldurasEnviadas = new Map(); // tamanho → upload da camada para o servidor
 
@@ -325,25 +326,27 @@ async function fotografar() {
     new Promise((ok) => miniatura.toBlob(ok, "image/jpeg", 0.85)),
   ]);
 
+  const minha = ++sessao;
   presetAtual = cfg.preset;
   mostrarFoto(URL.createObjectURL(previa));
   upload = enviarMoldura(l, a)
     .catch(() => {}) // sem moldura a foto ainda é salva
     .then(() => postar(`api/fotos?preset=${presetAtual}`, original, "image/jpeg"))
     .then(({ id }) => {
-      if (presetAtual === cfg.preset) mostrarFoto(`fotos/${id}.jpg?v=${Date.now()}`);
-      mostrarQr(id);
+      if (minha === sessao && presetAtual === cfg.preset) mostrarFoto(`fotos/${id}.jpg?v=${Date.now()}`);
+      if (minha === sessao) mostrarQr(id, minha);
       return id;
     });
-  upload.catch(() => falha("A foto não foi salva. Verifique se a janela do cabine.py está aberta e se há espaço em disco."));
+  upload.catch(() => minha === sessao && falha("A foto não foi salva. Verifique se a janela do cabine.py está aberta e se há espaço em disco."));
   tratando = upload;
+  foto.classList.remove("tratando");
   abrirRevisao();
 }
 
 // QR Code para o visitante baixar a foto no celular (só aparece se o túnel público estiver no ar).
-async function mostrarQr(id) {
+async function mostrarQr(id, minha) {
   const { qr } = await fetch(`api/fotos/${id}/link`).then((r) => r.json()).catch(() => ({}));
-  if (!qr || estado !== "revisao") return;
+  if (!qr || minha !== sessao || estado !== "revisao") return;
   $("#qr").innerHTML = qr; // SVG gerado pelo próprio servidor
   $("#baixar").hidden = false;
 }
@@ -358,17 +361,19 @@ function trocarPreset(passo) {
   const i = presets.findIndex((p) => p.id === presetAtual);
   presetAtual = presets[(i + passo + presets.length) % presets.length].id;
   const escolhido = presetAtual;
+  const minha = sessao;
+  const doVisitante = upload;
   marcarPresets();
   inatividade(60_000);
   foto.classList.add("tratando");
   tratando = tratando.catch(() => {}).then(async () => {
-    if (escolhido !== presetAtual) return; // já trocaram de novo
+    if (escolhido !== presetAtual || minha !== sessao) return; // já trocaram de novo ou é outra foto
     try {
-      const id = await upload;
+      const id = await doVisitante;
       await postar(`api/fotos/${id}/preset`, JSON.stringify({ preset: escolhido }), "application/json");
-      if (escolhido === presetAtual) mostrarFoto(`fotos/${id}.jpg?v=${Date.now()}`);
+      if (escolhido === presetAtual && minha === sessao) mostrarFoto(`fotos/${id}.jpg?v=${Date.now()}`);
     } finally {
-      if (escolhido === presetAtual) foto.classList.remove("tratando");
+      if (escolhido === presetAtual && minha === sessao) foto.classList.remove("tratando");
     }
   });
 }
