@@ -12,7 +12,7 @@ const reduzirMovimento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DISPARO = new Set(["Enter", " ", "PageDown", "PageUp"]); // teclado, teclado numérico e passador de slides
 const CELULAR = /^[1-9]{2}9\d{8}$/; // DDD + 9 + 8 dígitos (mesma regra do cabine.py)
 const FONTE = '"Marca", "Century Gothic", sans-serif'; // Century Gothic da identidade SENAI (ver @font-face)
-const PADRAO = { titulo: "", unidade: "", hashtag: "", espelhar: true, contagem: 3, resolucao: "max", preset: "natural" };
+const PADRAO = { titulo: "", unidade: "", hashtag: "", espelhar_previa: true, espelhar_foto: false, contagem: 3, resolucao: "max", fps: 30, preset: "natural" };
 const MENSAGENS = {
   NotAllowedError: "O navegador bloqueou a câmera. Libere o acesso no ícone ao lado do endereço e tente de novo.",
   NotFoundError: "Nenhuma câmera encontrada. Conecte uma webcam USB.",
@@ -64,12 +64,18 @@ async function iniciar() {
 async function abrirCamera(id) {
   mudar("carregando");
   stream?.getTracks().forEach((trilha) => trilha.stop());
-  const [largura, altura] = cfg.resolucao === "max" ? [4096, 2160] : cfg.resolucao;
+  // "max": pede acima de 8K e o Chrome escolhe o maior modo nativo que mantém o fps (sem isso, 640×480).
+  const [largura, altura] = cfg.resolucao === "max" ? [7680, 4320] : cfg.resolucao;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: id ? { exact: id } : undefined, width: { ideal: largura }, height: { ideal: altura } },
+      video: {
+        deviceId: id ? { exact: id } : undefined,
+        width: { ideal: largura },
+        height: { ideal: altura },
+        frameRate: { ideal: cfg.fps },
+        resizeMode: { ideal: "none" }, // modo nativo da câmera, sem reescala do navegador
+      },
     });
-    if (cfg.resolucao === "max") await resolucaoMaxima(stream.getVideoTracks()[0]);
     video.srcObject = stream;
     await Promise.race([video.play(), espera(8000).then(() => Promise.reject(new DOMException("sem imagem", "TimeoutError")))]);
   } catch (erro) {
@@ -87,12 +93,6 @@ async function abrirCamera(id) {
   const [, , l, a] = regiao();
   enviarMoldura(Math.round(l), Math.round(a)).catch(() => {}); // adianta o upload da moldura
   mudar("ao-vivo");
-}
-
-// Pede o maior modo que a câmera anuncia (as webcams 4K abrem em 640×480 se ninguém pedir).
-async function resolucaoMaxima(trilha) {
-  const { width, height } = trilha.getCapabilities?.() ?? {};
-  if (width?.max && height?.max) await trilha.applyConstraints({ width: { ideal: width.max }, height: { ideal: height.max } }).catch(() => {});
 }
 
 const listarCameras = async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
@@ -132,9 +132,9 @@ function regiao() {
   return [(vl - l) / 2, (va - l / proporcao) / 2, l, l / proporcao];
 }
 
-function desenharVideo(g, L, A) {
+function desenharVideo(g, L, A, espelhar) {
   const [x, y, l, a] = regiao();
-  if (cfg.espelhar) g.setTransform(-1, 0, 0, 1, L, 0); // prévia tipo espelho, como o celular
+  if (espelhar) g.setTransform(-1, 0, 0, 1, L, 0);
   g.drawImage(video, x, y, l, a, 0, 0, L, A);
   g.setTransform(1, 0, 0, 1, 0, 0);
 }
@@ -146,7 +146,7 @@ function quadro() {
     const escala = Math.min(1, (screen.width * devicePixelRatio) / l);
     const L = Math.round(l * escala), A = Math.round(a * escala);
     if (tela.width !== L || tela.height !== A) [tela.width, tela.height] = [L, A];
-    desenharVideo(ctx, L, A);
+    desenharVideo(ctx, L, A, cfg.espelhar_previa); // prévia tipo espelho, como o celular
     ctx.drawImage(camada(L, A), 0, 0);
   }
   requestAnimationFrame(quadro);
@@ -286,11 +286,16 @@ async function fotografar() {
   // Original em resolução total, sem moldura: o servidor trata e cola a moldura depois.
   const [, , l, a] = regiao().map(Math.round);
   const quadroTotal = Object.assign(document.createElement("canvas"), { width: l, height: a });
-  desenharVideo(quadroTotal.getContext("2d"), l, a);
+  desenharVideo(quadroTotal.getContext("2d"), l, a, cfg.espelhar_foto); // sem espelho: banners e camisetas legíveis
   if (!reduzirMovimento) $("#flash").animate([{ opacity: 0.9 }, { opacity: 0 }], { duration: 500, easing: "ease-out" });
+  // Prévia leve, igual à foto final (mesmo espelhamento), para aparecer na hora enquanto o servidor trata.
+  const miniatura = Object.assign(document.createElement("canvas"), { width: tela.width, height: tela.height });
+  const g = miniatura.getContext("2d");
+  g.drawImage(quadroTotal, 0, 0, tela.width, tela.height);
+  g.drawImage(camada(tela.width, tela.height), 0, 0);
   const [original, previa] = await Promise.all([
     new Promise((ok) => quadroTotal.toBlob(ok, "image/jpeg", 0.95)),
-    new Promise((ok) => tela.toBlob(ok, "image/jpeg", 0.85)), // o que a pessoa viu: aparece na hora
+    new Promise((ok) => miniatura.toBlob(ok, "image/jpeg", 0.85)),
   ]);
 
   presetAtual = cfg.preset;
