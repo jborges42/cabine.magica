@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 (06/10/2026)
+
+- O processo do WhatsApp encerra junto com a cabine e não fica órfão.
+
 ## 0.3.1 (06/10/2026)
 
 - QR de pareamento do WhatsApp legível (SVG escalável, margem e preto no branco).

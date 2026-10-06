@@ -9,7 +9,10 @@ bloqueio temporário, os envios param na hora.
 A biblioteca roda num PROCESSO SEPARADO: a parte em Go pode dar "panic" ou travar (verificado:
 chamadas antes do pareamento derrubam o processo inteiro), e isso não pode levar a cabine junto.
 """
+import atexit
 import multiprocessing
+import multiprocessing.connection
+import os
 import queue
 import random
 import secrets
@@ -33,6 +36,7 @@ _filas = {}
 _pendentes = {}  # job → [evento, resultado]
 _trava = threading.Lock()  # um envio por vez
 _ultimo = {"envio": 0.0, "visto": 0.0}
+atexit.register(lambda: _processo[0] and _processo[0].kill())  # saída normal da cabine
 
 
 class ErroCelular(Exception):
@@ -43,6 +47,10 @@ class ErroCelular(Exception):
 
 def _filho(sessao, pedidos, eventos):
     """Processo separado com o cliente do WhatsApp."""
+    # Se a cabine morrer (inclusive à força ou com a janela fechada no Windows), este processo
+    # encerra junto: um órfão seguiria usando a mesma sessão e brigaria com o próximo.
+    pai = multiprocessing.parent_process()
+    threading.Thread(target=lambda: (multiprocessing.connection.wait([pai.sentinel]), os._exit(0)), daemon=True).start()
     from neonize.client import NewClient
     from neonize.events import ConnectedEv, ConnectFailureEv, LoggedOutEv, PairStatusEv, TemporaryBanEv
     from neonize.utils.enum import ChatPresence, ChatPresenceMedia
